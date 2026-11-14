@@ -264,7 +264,14 @@ export function signOut() {
 /** Always succeeds from the person's point of view, whether or not the address has an account. */
 export async function requestPasswordReset(email) {
   try {
-    await sendPasswordResetEmail(auth, email);
+    try {
+      // With a way back to the site once the new password is chosen...
+      await sendPasswordResetEmail(auth, email, verificationSettings());
+    } catch (error) {
+      // ...unless the site's domain is not on the project's list of authorized domains.
+      if (error?.code !== 'auth/unauthorized-continue-uri' && error?.code !== 'auth/invalid-continue-uri') throw error;
+      await sendPasswordResetEmail(auth, email);
+    }
   } catch (error) {
     const code = error?.code || '';
     if (code === 'auth/too-many-requests' || code === 'auth/network-request-failed') throw friendly(error);

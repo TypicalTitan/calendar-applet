@@ -177,6 +177,9 @@ test('a site with no Firebase settings shows setup steps instead of a broken pag
   const page = await context.newPage();
   await page.goto('./');
   await expect(page.getByRole('heading', { name: 'Finish setting up' })).toBeVisible();
+  // The rules to paste into Firebase are shown on the page, ready to copy.
+  await expect(page.getByLabel('The security rules to paste')).toHaveValue(/rules_version = '2';[\s\S]*match \/events\/\{eventId\}/);
+  await expect(page.getByRole('button', { name: 'Copy the rules' })).toBeEnabled();
   await context.close();
 });
 

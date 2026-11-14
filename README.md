@@ -14,49 +14,19 @@ you own.
 
 ## Put it online
 
-You do three things once: create a Firebase project, paste four values into one file, and turn
-on GitHub Pages. Until the second step is done the site shows these same instructions to
-visitors instead of a broken page.
+You do three things once: turn on GitHub Pages, create a Firebase project, and paste four values
+into one file. Until the last step is done the site shows these same instructions to visitors
+instead of a broken page.
 
-### 1. Create the Firebase project (about ten minutes, free, no card)
+### 1. Turn on GitHub Pages
 
-1. Go to <https://console.firebase.google.com/> and choose **Add project**. Google Analytics can
-   stay off. The free **Spark** plan is all this needs.
-2. **Build > Authentication > Sign-in method**: enable **Email/Password** (for organizers) and
-   **Anonymous** (so invitees can save their times without an account).
-3. **Authentication > Settings > Authorized domains**: add `YOUR-NAME.github.io` (your own
-   name, not plain `github.io`, which would authorize every GitHub Pages site there is). This
-   lets the confirmation email send people back to your site.
-4. **Build > Firestore Database > Create database**. Pick a location near you and choose
-   **production mode**. Never use test mode: it lets anyone read and overwrite everything.
-5. **Firestore Database > Rules**: replace what is there with the contents of
-   [`firestore.rules`](firestore.rules) and choose **Publish**. These rules are what keep each
-   organizer's answers private; the site does not work safely without them.
-6. **Project settings (gear icon) > General > Your apps**: add a **Web app** and copy the
-   configuration it shows.
+Do this first, before anything is pushed to `main`. In the repository on GitHub:
+**Settings > Pages > Build and deployment > Source: GitHub Actions**. That is the only setting.
 
-### 2. Connect the site
-
-Open [`js/config.js`](js/config.js) and fill in the four values from step 6:
-
-```js
-firebase: {
-  apiKey: '…',
-  authDomain: '…',
-  projectId: '…',
-  appId: '…',
-},
-```
-
-Commit the change. These values identify your project; they are not passwords and are meant to
-be public. What protects the data is the rules from step 5.
-
-### 3. Turn on GitHub Pages
-
-In the repository on GitHub: **Settings > Pages > Build and deployment > Source: GitHub
-Actions**. That is the only setting. From then on, every push to `main` runs the tests and, if
-they pass, publishes the site to `https://YOUR-NAME.github.io/calendar-applet/` (the first run
-takes several minutes; watch it under the **Actions** tab).
+From then on, every push to `main` runs the tests and, if they pass, publishes the site to
+`https://YOUR-NAME.github.io/calendar-applet/`. A run takes several minutes; watch it under the
+**Actions** tab. If a run failed because Pages was not on yet, open it there and choose
+**Re-run all jobs**.
 
 GitHub Pages on the free plan needs the repository to be public.
 
@@ -74,6 +44,52 @@ minutes after each change.
 
 </details>
 
+### 2. Create the Firebase project (about ten minutes, free, no card)
+
+Firebase renames its console menus from time to time. The names below are the current ones;
+older guides show Authentication and Firestore under a "Build" heading instead.
+
+1. Go to <https://console.firebase.google.com/> and create a project. Gemini in Firebase and
+   Google Analytics can stay off. The free **Spark** plan is all this needs.
+2. **Security > Authentication > Sign-in method**: enable **Email/Password** (for organizers) and
+   **Anonymous** (so invitees can save their times without an account).
+3. **Authentication > Settings > Authorized domains**: add `YOUR-NAME.github.io` (your own
+   name, not plain `github.io`, which would authorize every GitHub Pages site there is). This
+   lets the emails Firebase sends bring people back to your site.
+4. **Authentication > Settings > Password policy**: minimum length **15**, enforcement
+   **Require**, and leave the character-type requirements off. Do not skip this. The site's own
+   forms insist on 15 characters, but password resets happen on a page Firebase hosts, and
+   without this setting that page accepts six. (Fifteen is the current NIST minimum when a
+   password is the only thing protecting an account. Length matters; forced symbols do not.)
+5. **Databases & Storage > Firestore > Create database**. Keep the **Standard** edition and the
+   database ID **(default)**, pick a location near the people who will use the site (it cannot
+   be changed later), and choose **production mode**. Never use test mode: it lets anyone read
+   and overwrite everything.
+6. **Firestore > Rules**: replace what is there with the contents of
+   [`firestore.rules`](firestore.rules) and choose **Publish**. These rules are what keep each
+   organizer's answers private; the site does not work safely without them. (The site's own
+   setup page shows the same rules with a Copy button.)
+7. **Project settings (gear icon) > General > Your apps**: add a **Web app**. The console shows
+   a snippet with several values; you need four of them.
+
+### 3. Connect the site
+
+Open [`js/config.js`](js/config.js) and fill in these four values from the snippet in step 7
+(ignore the others):
+
+```js
+firebase: {
+  apiKey: '…',
+  authDomain: '…',
+  projectId: '…',
+  appId: '…',
+},
+```
+
+Commit the change to `main`. These values identify your project; they are not passwords and are
+meant to be public. What protects the data is the rules from step 6. A few minutes after the
+commit, once the tests have run, the site is live.
+
 ### Check it on your real project
 
 The tests in this repository run against Firebase's local emulators, which are close to the
@@ -89,20 +105,21 @@ live site:
    window can no longer save.
 5. Delete the event. Its invite link now says the event cannot be found.
 
-If step 1's email never arrives, check *Authentication > Templates* in the Firebase console and
-that step 3 of the setup (authorized domain) was done.
+If the email in step 1 never arrives: look in spam, then check *Authentication > Templates* in
+the Firebase console. The free plan sends at most 1,000 confirmation emails and 150
+password-reset emails a day.
 
 ### Recommended once it works
 
 - **Restrict the API key.** In the [Google Cloud console](https://console.cloud.google.com/apis/credentials),
-  open the key named "Browser key", and under *Website restrictions* allow only
-  `https://YOUR-NAME.github.io/*` and `https://YOUR-PROJECT.firebaseapp.com/*`. Under *API
-  restrictions* allow only Identity Toolkit API, Token Service API and Cloud Firestore API.
-  This stops other sites from using your project's quota.
-- **Set a password policy.** *Authentication > Settings > Password policy*: require at least 15
-  characters and leave the character-type requirements off, to match what the sign-up form asks
-  for. (Fifteen is the current NIST minimum when a password is the only thing protecting an
-  account. Length matters; forced symbols do not.)
+  open the key named "Browser key (auto created by Firebase)". Under *Application restrictions*
+  choose *Websites* and add all four of `https://YOUR-NAME.github.io`,
+  `https://YOUR-NAME.github.io/*`, `https://YOUR-PROJECT.firebaseapp.com` and
+  `https://YOUR-PROJECT.firebaseapp.com/*` (the second pair is for the pages Firebase hosts
+  for confirming an email and resetting a password). Under *API restrictions* allow only
+  Identity Toolkit API, Token Service API and Cloud Firestore API. This stops other sites from
+  using your project's quota. Afterwards, open the site in a private window and check that
+  signing in and an invite link still work; if they do not, remove the restriction.
 - **Keep email enumeration protection on** (*Authentication > Settings > User actions*; it is on
   by default for new projects).
 - **Name the sender.** *Authentication > Templates* controls the sender name of the
@@ -159,14 +176,23 @@ times converted to theirs and can switch to the event's zone.
   which is far more than a group of friends needs. If the quota is ever used up the site stops
   working until the next day (midnight Pacific time); it cannot run up a bill. Firebase also
   allows about 100 new sign-ups an hour from one network address, guests included, so a
-  lecture hall answering all at once from one Wi-Fi network may be asked to wait a few minutes.
-  A results page shows at most 500 answers.
+  lecture hall answering all at once from one Wi-Fi network may be asked to wait a few minutes
+  (for a big session you can raise that limit for a time slot under *Authentication >
+  Sign-in method*). It sends at most 1,000 confirmation emails and 150 password-reset emails a
+  day. A results page shows at most 500 answers.
 - **Browsers.** Current Chrome, Edge, Firefox and Safari, on computers and phones. Anything from
   roughly 2023 onwards works; older browsers get a message asking for an update.
 - **Every site under one `github.io` name shares browser storage.** If you publish other Pages
   sites from the same GitHub account that run code you do not trust, give this one its own
-  domain.
-- **If you rename the repository**, change the three `/calendar-applet/` paths in
+  domain (and add that domain to Firebase's authorized domains and to any API-key restriction).
+- **GitHub's own caution.** GitHub says Pages sites "shouldn't be used for sensitive
+  transactions like sending passwords". Here the sign-in forms are served from Pages, but what
+  is typed into them goes straight to Google's sign-in service over HTTPS and never to GitHub.
+  If that still sits badly with you, the same files can be served from any static host.
+- **All-day windows and clock changes.** An event that runs the full 24 hours on the weekend
+  the clocks change will have one hour missing (autumn) or shown twice (spring) at the join
+  between two days. Ordinary daytime and evening windows are not affected.
+- **If you rename the repository**, change the `/calendar-applet/` paths in
   [`404.html`](404.html) to match.
 - **To rename the app**, change `appName` in [`js/config.js`](js/config.js) and the `<title>` in
   [`index.html`](index.html).
@@ -266,6 +292,8 @@ npm test
 
 - Typeface: [Archivo](https://github.com/Omnibus-Type/Archivo) by Omnibus-Type, SIL Open Font
   License 1.1 (`assets/fonts/OFL.txt`).
-- [Firebase JavaScript SDK](https://github.com/firebase/firebase-js-sdk), Apache License 2.0.
+- [Firebase JavaScript SDK](https://github.com/firebase/firebase-js-sdk), Apache License 2.0,
+  and [idb](https://github.com/jakearchibald/idb), ISC licence, which it includes. Licence
+  texts are in `js/vendor/`.
 - The approach was informed by reading how when2meet, crab.fit, Timeful and Rallly work. No
   code was taken from them.

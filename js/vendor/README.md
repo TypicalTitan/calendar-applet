@@ -5,3 +5,7 @@ from the `firebase` npm package at the version pinned in `package.json`, reduced
 functions listed in `scripts/firebase-entry.js`. It is licensed under the Apache License,
 Version 2.0; a copy is in `LICENSE-APACHE-2.0.txt`, and the original copyright notices are kept
 inside the file. It is not modified by hand: `npm run vendor` regenerates it.
+
+The bundle also contains `idb` (copyright Jake Archibald), a small library the Firebase SDK uses
+to talk to the browser's storage. It is licensed under the ISC licence, in
+`LICENSE-ISC-idb.txt`.

@@ -2,7 +2,7 @@
 // broken page on GitHub Pages, or as a security regression nobody notices.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, statSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync, mkdtempSync, rmSync, cpSync, writeFileSync } from 'node:fs';
 import { join, dirname, resolve, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -71,7 +71,9 @@ test('the published folder holds only the site, with stamped script and style fo
     assert.ok(html.includes('./css-abc12345/app.css'));
     assert.ok(html.includes('src="./js-abc12345/main.js"'));
     assert.equal(/\.\/(js|css)\//.test(html), false, 'an unstamped address is left in index.html');
-    assert.equal(/calendar-applet\/(js|css)\//.test(readFileSync(join(out, '404.html'), 'utf8')), false);
+    const missing = readFileSync(join(out, '404.html'), 'utf8');
+    assert.equal(/\/(js|css)\//.test(missing), false, 'an unstamped address is left in 404.html');
+    assert.ok(missing.includes('/css-abc12345/app.css'));
 
     // Every script is announced up front so the browser fetches them together.
     const preloaded = [...html.matchAll(/rel="modulepreload" href="\.\/js-abc12345\/([^"]+)"/g)].map((m) => m[1]).sort();
@@ -89,4 +91,21 @@ test('the published folder holds only the site, with stamped script and style fo
 test('a browser too old for the site is told so', () => {
   assert.ok(/<script nomodule src="\.\/js\/legacy\.js">/.test(read('index.html')));
   assert.ok(existsSync(join(root, 'js/legacy.js')));
+});
+
+test('the 404 page is stamped whatever the repository is called, including a site on its own domain', () => {
+  for (const [prefix, expected] of [['/my-renamed-repo', '/my-renamed-repo/css-abc12345/app.css'], ['', '/css-abc12345/app.css']]) {
+    const copy = mkdtempSync(join(tmpdir(), 'site-src-'));
+    const out = mkdtempSync(join(tmpdir(), 'site-'));
+    try {
+      cpSync(root, copy, { recursive: true, filter: (path) => !/node_modules|\.git|\.claude|_site|test-results/.test(path) });
+      const page = readFileSync(join(copy, '404.html'), 'utf8').replaceAll('/calendar-applet', prefix);
+      writeFileSync(join(copy, '404.html'), page);
+      assembleSite({ root: copy, out, stamp: 'abc12345' });
+      assert.ok(readFileSync(join(out, '404.html'), 'utf8').includes(`href="${expected}"`), prefix || '(own domain)');
+    } finally {
+      rmSync(copy, { recursive: true, force: true });
+      rmSync(out, { recursive: true, force: true });
+    }
+  }
 });

@@ -43,13 +43,14 @@ export function assembleSite({ root, out, stamp }) {
   index = `${index.slice(0, entry)}${preloads}\n${index.slice(entry)}`;
   writeFileSync(join(out, 'index.html'), index);
 
+  // 404.html uses addresses from the top of the site ("/calendar-applet/css/..." or, on a domain
+  // of its own, "/css/..."), whatever the repository is called.
   const missing = readFileSync(join(out, '404.html'), 'utf8')
-    .replaceAll('/calendar-applet/css/', `/calendar-applet/css-${stamp}/`)
-    .replaceAll('/calendar-applet/js/', `/calendar-applet/js-${stamp}/`);
+    .replace(/((?:href|src)="(?:\/[^"/]+)*)\/(css|js)\//g, `$1/$2-${stamp}/`);
   writeFileSync(join(out, '404.html'), missing);
 
   for (const [name, text] of [['index.html', index], ['404.html', missing]]) {
-    if (/(\.|calendar-applet)\/(js|css)\//.test(text)) throw new Error(`${name} still points at an unstamped folder`);
+    if (/\/(js|css)\//.test(text)) throw new Error(`${name} still points at an unstamped folder`);
   }
   return out;
 }
