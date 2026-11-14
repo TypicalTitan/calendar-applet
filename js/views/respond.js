@@ -3,7 +3,7 @@
 import { h, replace, field, toast, confirmDialog } from '../ui/dom.js';
 import { createPaintGrid } from '../ui/grid.js';
 import { zoneChooser } from '../ui/zone.js';
-import { getEvent, getMyAnswer, saveMyAnswer, deleteMyAnswer, getUser, getAccount } from '../backend.js';
+import { getEvent, getMyAnswer, saveMyAnswer, deleteMyAnswer, getUser, getAccount, signOut } from '../backend.js';
 import { buildSlots, slotWall } from '../core/slots.js';
 import { cleanName, fromAnswer, toAnswer, NAME_MAX } from '../core/availability.js';
 import { duration, eventSummary, shortDate, timeLabel } from '../ui/format.js';
@@ -145,6 +145,30 @@ export function respondView({ params }) {
       }
     });
 
+    // Guests are recognised by their browser. On a shared computer the next person would
+    // otherwise be editing the first person's answer without realising.
+    const someoneElse = h('p', { class: 'banner banner-plain', hidden: !(existing && getUser()?.guest) },
+      h('span', null, `These are the times saved from this browser as ${existing?.name || ''}. `),
+      h('button', { type: 'button', class: 'linklike', onclick: startFresh }, 'Someone else? Add a separate answer'));
+    async function startFresh() {
+      try {
+        await signOut();
+        saved = null;
+        dirty = false;
+        bits = new Uint8Array(slots.count);
+        grid.setValue(bits);
+        name.input.value = '';
+        remove.hidden = true;
+        someoneElse.hidden = true;
+        status.textContent = '';
+        status.classList.remove('is-good');
+        showTally();
+        name.input.focus();
+      } catch (error) {
+        toast(error.message);
+      }
+    }
+
     const warnOnLeave = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
     window.addEventListener('beforeunload', warnOnLeave);
 
@@ -171,6 +195,7 @@ export function respondView({ params }) {
     } else {
       replace(form,
         organizerNote,
+        someoneElse,
         h('div', { class: 'sheet stack' },
           name.el,
           chooser.el,

@@ -168,10 +168,11 @@ export function createPaintGrid({ event, slots, zone, value, readOnly = false, l
     const body = table.tBodies[0].getBoundingClientRect();
     const first = cells[0].getBoundingClientRect();
     const view = scroller.getBoundingClientRect();
-    const left = Math.max(first.left, view.left) + 2;
-    const right = Math.min(body.right, view.right) - 2;
-    const top = Math.max(body.top, view.top) + 2;
-    const bottom = Math.min(body.bottom, view.bottom) - 2;
+    // The part of the cells actually on screen: inside the grid's scroll box and the window.
+    const left = Math.max(first.left, view.left, 0) + 2;
+    const right = Math.min(body.right, view.right, window.innerWidth) - 2;
+    const top = Math.max(body.top, view.top, 0) + 2;
+    const bottom = Math.min(body.bottom, view.bottom, window.innerHeight) - 2;
     if (right < left || bottom < top) return -1;
     return indexOfCell(table, document.elementFromPoint(Math.min(right, Math.max(left, x)), Math.min(bottom, Math.max(top, y))));
   }

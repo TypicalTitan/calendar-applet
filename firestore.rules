@@ -90,7 +90,9 @@ service cloud.firestore {
         && resource.data.ownerUid == request.auth.uid
         && request.query.limit <= 100;
 
+      // The id is the secret in the invite link, so it must be a full-length random one.
       allow create: if hasAccount()
+        && eventId.matches('^[A-Za-z0-9]{20}$')
         && request.resource.data.ownerUid == request.auth.uid
         && validEvent(request.resource.data)
         && request.resource.data.createdAt == request.time

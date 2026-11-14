@@ -109,7 +109,7 @@ function friendly(error, fallback) {
     return new FriendlyError('That email can’t be used for a new account. If it’s yours, sign in or reset your password.', code);
   }
   if (code === 'auth/weak-password' || code === 'auth/password-does-not-meet-requirements') {
-    return new FriendlyError('Choose a longer password: at least 10 characters.', code);
+    return new FriendlyError(`Choose a longer password: at least ${PASSWORD_MIN} characters.`, code);
   }
   if (code === 'auth/operation-not-allowed' || code === 'auth/admin-restricted-operation') {
     return new FriendlyError('This site isn’t fully set up yet: this kind of sign-in is switched off in its Firebase project.', code);
@@ -272,7 +272,7 @@ export function deleteAccount(password) {
 
 // ------------------------------------------------------------------ events
 
-const ID = /^[A-Za-z0-9_-]{1,64}$/;
+const ID = /^[A-Za-z0-9]{20}$/; // the shape of the ids Firestore generates, and the only one the rules accept
 const millis = (stamp) => (stamp && typeof stamp.toMillis === 'function' ? stamp.toMillis() : null);
 
 function readEvent(snapshot) {
