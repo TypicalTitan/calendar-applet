@@ -19,13 +19,34 @@ export function freshEmail() {
   return `organizer-${Date.now()}-${counter}@example.com`;
 }
 
-export async function signUp(page, { name = 'Olga', email = freshEmail(), password = 'correct horse battery' } = {}) {
+/**
+ * Does what clicking the link in the confirmation email does. The Auth emulator does not send
+ * mail; it keeps the links and hands them out on request.
+ */
+export async function openConfirmationLink(email) {
+  const host = process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099';
+  const listed = await (await fetch(`http://${host}/emulator/v1/projects/demo-calendar-applet/oobCodes`)).json();
+  const mail = listed.oobCodes.filter((code) => code.email === email && code.requestType === 'VERIFY_EMAIL').pop();
+  if (!mail) throw new Error(`No confirmation email was sent to ${email}`);
+  // The emulator confirms the address and then redirects to the site; the redirect is not followed.
+  const opened = await fetch(mail.oobLink, { redirect: 'manual' });
+  if (opened.status >= 400) throw new Error(`The confirmation link failed: ${opened.status}`);
+}
+
+/** Creates an account and, unless told otherwise, confirms its email as the person would. */
+export async function signUp(page, { name = 'Olga', email = freshEmail(), password = 'correct horse battery', confirm = true } = {}) {
   await page.goto('#/sign-up');
   await page.getByLabel('Your name').fill(name);
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page.getByRole('heading', { name: 'Your events' })).toBeVisible();
+  if (confirm) {
+    await expect(page.getByRole('heading', { name: 'Confirm your email' })).toBeVisible();
+    await openConfirmationLink(email);
+    await page.getByRole('button', { name: 'I’ve confirmed' }).click();
+    await expect(page.getByRole('link', { name: 'New event' }).first()).toBeVisible();
+  }
   return { name, email, password };
 }
 

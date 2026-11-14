@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!--
-    Content-Security-Policy: this page may only run its own scripts and styles, and may only talk
-    to the Firebase sign-in and database services. If you add a feature that needs another host,
-    add it here.
+    Content-Security-Policy: this page may only run its own scripts and styles, may only talk to
+    the Firebase sign-in and database services, never submits a form anywhere, and (Trusted
+    Types) refuses any attempt to turn a string into markup or script. If you add a feature that
+    needs another host, add it here.
   -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com; manifest-src 'self'; base-uri 'none'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests; require-trusted-types-for 'script'; trusted-types 'none'">
   <!-- Other sites learn only this site's address, never the page. (The part of an invite link after "#" is never sent anywhere.) -->
   <meta name="referrer" content="strict-origin">
   <meta name="color-scheme" content="light dark">

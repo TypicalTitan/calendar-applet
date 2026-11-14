@@ -1,6 +1,7 @@
 // Takes screenshots of every main page for visual review: node tests/e2e/shots.mjs <outDir>
 // Run under the emulators with the test server already listening (see `npm run shots`).
 import { chromium, devices } from '@playwright/test';
+import { openConfirmationLink } from './helpers.js';
 
 const out = process.argv[2] || 'test-results/shots';
 const base = `http://127.0.0.1:${process.env.PORT || 4173}/calendar-applet/`;
@@ -26,11 +27,16 @@ await shot(page, '01-home');
 
 await page.goto(`${base}#/sign-up`);
 await page.getByLabel('Your name').fill('Olga');
-await page.getByLabel('Email').fill(`shots-${Date.now()}@example.com`);
+const email = `shots-${Date.now()}@example.com`;
+await page.getByLabel('Email').fill(email);
 await page.getByLabel('Password', { exact: true }).fill('correct horse battery');
 await shot(page, '02-sign-up');
 await page.getByRole('button', { name: 'Create account' }).click();
-await page.getByRole('heading', { name: 'Your events' }).waitFor();
+await page.getByRole('heading', { name: 'Confirm your email' }).waitFor();
+await shot(page, '03-confirm-email');
+await openConfirmationLink(email);
+await page.getByRole('button', { name: 'I’ve confirmed' }).click();
+await page.getByText('No events yet').waitFor();
 await shot(page, '03-events-empty');
 
 await page.goto(`${base}#/new`);

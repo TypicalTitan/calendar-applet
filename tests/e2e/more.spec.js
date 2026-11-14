@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signUp, createEvent, answerAsGuest, nextMonthDays, freshEmail } from './helpers.js';
+import { signUp, createEvent, answerAsGuest, nextMonthDays, freshEmail, openConfirmationLink } from './helpers.js';
 
 const NY = { locale: 'en-US', timezoneId: 'America/New_York' };
 
@@ -10,8 +10,36 @@ test('the sign-up form explains what is wrong instead of creating a weak account
   await page.getByLabel('Password', { exact: true }).fill('short');
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page.getByText('Enter an email address, like name@example.com.')).toBeVisible();
-  await expect(page.getByText('Use at least 10 characters.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Use at least 15 characters.', { exact: false })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Create an account' })).toBeVisible();
+});
+
+test('a new organizer must confirm their email before they can create an event', async ({ page }) => {
+  const account = await signUp(page, { confirm: false });
+  await expect(page.getByRole('heading', { name: 'Confirm your email' })).toBeVisible();
+  await expect(page.getByText(account.email)).toBeVisible();
+  await expect(page.getByRole('link', { name: 'New event' })).toHaveCount(0);
+
+  // Going straight to the form does not get round it.
+  await page.goto('#/new');
+  await expect(page.getByRole('heading', { name: 'Confirm your email' })).toBeVisible();
+  await expect(page.getByLabel('Event name')).toHaveCount(0);
+
+  // Saying "I've confirmed" without having opened the link changes nothing.
+  await page.getByRole('button', { name: 'I’ve confirmed' }).click();
+  await expect(page.getByText('Not confirmed yet')).toBeVisible();
+
+  await openConfirmationLink(account.email);
+  await page.getByRole('button', { name: 'I’ve confirmed' }).click();
+  await expect(page.getByLabel('Event name')).toBeVisible();
+  await createEvent(page);
+});
+
+test('coming back to the tab after opening the confirmation link is enough', async ({ page }) => {
+  const account = await signUp(page, { confirm: false });
+  await openConfirmationLink(account.email);
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.getByRole('link', { name: 'New event' }).first()).toBeVisible();
 });
 
 test('signing up twice with one email does not create a second account', async ({ page, browser }) => {

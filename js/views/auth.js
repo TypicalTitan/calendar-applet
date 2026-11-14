@@ -29,7 +29,7 @@ export function signInView() {
   const password = field({ label: 'Password', control: input({ type: 'password', name: 'password', autocomplete: 'current-password', required: true }) });
   const error = h('p', { class: 'form-error', role: 'alert', hidden: true });
   const button = h('button', { type: 'submit', class: 'btn btn-block' }, 'Sign in');
-  const form = h('form', { class: 'sheet stack', novalidate: true }, email.el, password.el, error, button);
+  const form = h('form', { class: 'sheet stack', method: 'post', novalidate: true }, email.el, password.el, error, button);
 
   submitter(form, button, error, async () => {
     await signIn({ email: email.input.value.trim(), password: password.input.value });
@@ -53,7 +53,7 @@ export function signUpView() {
   const password = field({ label: 'Password', control: input({ type: 'password', name: 'new-password', autocomplete: 'new-password', required: true, minlength: PASSWORD_MIN, maxlength: 128 }), hint: `At least ${PASSWORD_MIN} characters. A few unrelated words work well, and so does a password manager.` });
   const error = h('p', { class: 'form-error', role: 'alert', hidden: true });
   const button = h('button', { type: 'submit', class: 'btn btn-block' }, 'Create account');
-  const form = h('form', { class: 'sheet stack', novalidate: true }, name.el, email.el, password.el, error, button);
+  const form = h('form', { class: 'sheet stack', method: 'post', novalidate: true }, name.el, email.el, password.el, error, button);
 
   submitter(form, button, error, async () => {
     const cleanName = tidyLine(name.input.value).slice(0, 60);
@@ -83,7 +83,7 @@ export function resetView() {
   const error = h('p', { class: 'form-error', role: 'alert', hidden: true });
   const done = h('p', { class: 'banner banner-plain', role: 'status', hidden: true });
   const button = h('button', { type: 'submit', class: 'btn btn-block' }, 'Send reset link');
-  const form = h('form', { class: 'sheet stack', novalidate: true }, email.el, error, button);
+  const form = h('form', { class: 'sheet stack', method: 'post', novalidate: true }, email.el, error, button);
 
   submitter(form, button, error, async () => {
     const address = email.input.value.trim();

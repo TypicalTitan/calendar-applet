@@ -1,31 +1,20 @@
 // The organizer's list of events.
 
-import { h, replace, icon, toast } from '../ui/dom.js';
-import { listMyEvents, getAccount, resendVerification, recheckVerification } from '../backend.js';
+import { h, replace, icon } from '../ui/dom.js';
+import { listMyEvents, getAccount } from '../backend.js';
+import { verifyPanel } from './verify.js';
 import { daysSummary, timeRange } from '../ui/format.js';
 
-function verifyBanner(account) {
-  const banner = h('div', { class: 'banner', role: 'region', 'aria-label': 'Confirm your email' });
-  const resend = h('button', { type: 'button', class: 'btn btn-quiet btn-small' }, 'Send it again');
-  const check = h('button', { type: 'button', class: 'btn btn-quiet btn-small' }, 'I’ve confirmed');
-  resend.addEventListener('click', async () => {
-    resend.disabled = true;
-    try { await resendVerification(); toast('Confirmation email sent'); } catch (error) { toast(error.message); }
-    setTimeout(() => { resend.disabled = false; }, 30_000);
-  });
-  check.addEventListener('click', async () => {
-    try {
-      if (await recheckVerification()) { banner.remove(); toast('Email confirmed'); } else toast('Not confirmed yet. Open the link in the email first.');
-    } catch (error) { toast(error.message); }
-  });
-  replace(banner,
-    h('p', null, `Confirm your email: we sent a link to ${account.email}. It proves the address is yours, so you can reset your password if you ever need to.`),
-    resend, check);
-  return banner;
-}
-
-export function eventsView() {
+export function eventsView({ navigate }) {
   const account = getAccount();
+  if (!account.verified) {
+    const panel = verifyPanel(account, () => navigate('/events'));
+    return {
+      title: 'Your events',
+      dispose: panel.dispose,
+      el: h('div', { class: 'stack' }, h('div', { class: 'page-head' }, h('h1', null, 'Your events')), panel.el),
+    };
+  }
   const list = h('div', null, h('p', { class: 'loading', role: 'status' }, 'Loading your events…'));
 
   listMyEvents().then((events) => {
@@ -51,7 +40,6 @@ export function eventsView() {
       h('div', { class: 'page-head' },
         h('h1', null, 'Your events'),
         h('a', { class: 'btn', href: '#/new' }, icon('plus'), 'New event')),
-      account && !account.verified ? verifyBanner(account) : null,
       list),
   };
 }

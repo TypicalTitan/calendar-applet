@@ -24,7 +24,9 @@ visitors instead of a broken page.
    stay off. The free **Spark** plan is all this needs.
 2. **Build > Authentication > Sign-in method**: enable **Email/Password** (for organizers) and
    **Anonymous** (so invitees can save their times without an account).
-3. **Authentication > Settings > Authorized domains**: add `YOUR-NAME.github.io`.
+3. **Authentication > Settings > Authorized domains**: add `YOUR-NAME.github.io` (your own
+   name, not plain `github.io`, which would authorize every GitHub Pages site there is). This
+   lets the confirmation email send people back to your site.
 4. **Build > Firestore Database > Create database**. Pick a location near you and choose
    **production mode**. Never use test mode: it lets anyone read and overwrite everything.
 5. **Firestore Database > Rules**: replace what is there with the contents of
@@ -64,19 +66,24 @@ GitHub Pages on the free plan needs the repository to be public.
   `https://YOUR-NAME.github.io/*` and `https://YOUR-PROJECT.firebaseapp.com/*`. Under *API
   restrictions* allow only Identity Toolkit API, Token Service API and Cloud Firestore API.
   This stops other sites from using your project's quota.
-- **Set a password policy.** *Authentication > Settings > Password policy*: require at least 10
-  characters, to match what the sign-up form asks for.
+- **Set a password policy.** *Authentication > Settings > Password policy*: require at least 15
+  characters and leave the character-type requirements off, to match what the sign-up form asks
+  for. (Fifteen is the current NIST minimum when a password is the only thing protecting an
+  account. Length matters; forced symbols do not.)
 - **Keep email enumeration protection on** (*Authentication > Settings > User actions*; it is on
   by default for new projects).
-- **Name the sender.** *Authentication > Templates* controls the wording and sender name of the
-  confirmation and password-reset emails.
+- **Name the sender.** *Authentication > Templates* controls the sender name of the
+  confirmation and password-reset emails. They come from a `firebaseapp.com` address, so some
+  land in spam; the site tells new organizers to look there.
 - **App Check** (optional) makes it much harder for a script to burn through your free daily
   quota. Enabling it means adding the App Check SDK to `scripts/firebase-entry.js` and the
   reCAPTCHA hosts to the Content-Security-Policy in `index.html`; it is not wired up here.
 
 ## What people can do
 
-**Organizers** create an account (email and password), then:
+**Organizers** create an account (email and password) and confirm their email by opening the
+link Firebase sends them. Until they do, the database itself refuses to let the account create
+events. Then they can:
 
 - create an event: a name, up to 31 days picked on a calendar, a daily window such as 9:00 AM to
   5:00 PM (windows that run past midnight work too), slots of 15, 30 or 60 minutes, and a time
@@ -139,12 +146,17 @@ tests/                unit, security-rule and browser tests
 ### Security, in short
 
 - Passwords are handled entirely by Firebase Authentication; this site never stores or sees a
-  password hash. Sign-in errors never reveal whether an email has an account.
+  password hash. New passwords must be at least 15 characters. Sign-in and password-reset
+  messages never reveal whether an email has an account. Changing a password or deleting an
+  account asks for the current password again.
+- An account can create events only after its email address is confirmed, and that is checked
+  by the database rules, not just by the page.
 - All access control is in [`firestore.rules`](firestore.rules), enforced by Firestore itself,
   and covered by tests in `tests/rules/`. Every field of every write is checked there.
 - The page runs only its own scripts (`script-src 'self'`), loads nothing from third parties,
-  and may talk only to the Firebase sign-in and database hosts. The Firebase SDK is served from
-  this repository rather than a CDN.
+  may talk only to the Firebase sign-in and database hosts, never submits a form to a server,
+  and enforces Trusted Types so no string can be turned into markup. The Firebase SDK is served
+  from this repository rather than a CDN.
 - Everything people type is put on the page as text, never as HTML. Names in CSV files are
   neutralised so a spreadsheet cannot run them as formulas.
 - The page refuses to run inside another site's frame.

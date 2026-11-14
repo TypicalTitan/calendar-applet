@@ -23,6 +23,7 @@ let db = null;
 let currentUser; // undefined until Firebase has reported the sign-in state once
 const listeners = new Set();
 let ready;
+let settingUpAccount = false; // true while sign-up is still filling in the new account
 
 export function isConfigured(config) {
   const f = config?.firebase;
@@ -44,7 +45,7 @@ export function startBackend(config) {
     onAuthStateChanged(auth, (user) => {
       currentUser = toUser(user);
       resolve();
-      for (const listener of listeners) listener(currentUser);
+      if (!settingUpAccount) for (const listener of listeners) listener(currentUser);
     });
   });
   return ready;
@@ -138,7 +139,8 @@ async function attempt(work, fallback) {
 
 // ------------------------------------------------------------------ accounts
 
-export const PASSWORD_MIN = 10;
+// NIST SP 800-63B-4 asks for at least 15 characters when a password is the only factor.
+export const PASSWORD_MIN = 15;
 
 /**
  * Checks a new password against this site's minimum and the Firebase project's own password
@@ -185,18 +187,25 @@ async function sendVerification(user) {
 
 export function signUp({ name, email, password }) {
   return attempt(async () => {
-    let user;
-    if (auth.currentUser?.isAnonymous) {
-      // This browser already answered an invite as a guest. Turn that guest into the new account
-      // so the answers stay theirs.
-      ({ user } = await linkWithCredential(auth.currentUser, EmailAuthProvider.credential(email, password)));
-    } else {
-      ({ user } = await createUserWithEmailAndPassword(auth, email, password));
+    // Pages hear about the new account only once it has its name and its confirmation email has
+    // gone out, so nothing is shown half-made.
+    settingUpAccount = true;
+    try {
+      let user;
+      if (auth.currentUser?.isAnonymous) {
+        // This browser already answered an invite as a guest. Turn that guest into the new
+        // account so the answers stay theirs.
+        ({ user } = await linkWithCredential(auth.currentUser, EmailAuthProvider.credential(email, password)));
+      } else {
+        ({ user } = await createUserWithEmailAndPassword(auth, email, password));
+      }
+      if (name) await updateProfile(user, { displayName: name });
+      try { await sendVerification(user); } catch (error) { console.warn('Confirmation email not sent', error); }
+      await user.getIdToken(true); // so the database sees an account, not a guest, straight away
+    } finally {
+      settingUpAccount = false;
+      refreshUser();
     }
-    if (name) await updateProfile(user, { displayName: name });
-    await user.getIdToken(true); // so the database sees an account, not a guest, straight away
-    refreshUser();
-    try { await sendVerification(user); } catch (error) { console.warn('Verification email not sent', error); }
   });
 }
 
@@ -301,7 +310,7 @@ export function createEvent(value) {
       updatedAt: serverTimestamp(),
     });
     return ref.id;
-  }, { denied: 'The event couldn’t be saved. Sign in again and retry.' });
+  }, { denied: 'The event couldn’t be saved. Check that your email is confirmed, then try again.' });
 }
 
 /** The event, null if there is none with that id, or 'damaged' if it is not well formed. */

@@ -2,7 +2,8 @@
 
 import { h, field, uid, toast } from '../ui/dom.js';
 import { createDatePicker } from '../ui/calendar.js';
-import { createEvent } from '../backend.js';
+import { createEvent, getAccount } from '../backend.js';
+import { verifyPanel } from './verify.js';
 import { validateEvent, endMinuteFor, LIMITS } from '../core/validate.js';
 import { listTimeZones, localTimeZone } from '../core/tz.js';
 import { todayIn, addDays } from '../core/dates.js';
@@ -11,6 +12,16 @@ import { timeLabel, zoneLabel, plural, duration, daysSummary } from '../ui/forma
 const SLOT_CHOICES = [[15, '15 minutes'], [30, '30 minutes'], [60, '1 hour']];
 
 export function newEventView({ navigate }) {
+  const account = getAccount();
+  if (!account.verified) {
+    const panel = verifyPanel(account, () => navigate('/new'));
+    return {
+      title: 'New event',
+      narrow: true,
+      dispose: panel.dispose,
+      el: h('div', { class: 'stack' }, h('div', { class: 'page-head' }, h('h1', null, 'New event')), panel.el),
+    };
+  }
   const zone = localTimeZone();
   const today = todayIn(zone);
   let dates = [];

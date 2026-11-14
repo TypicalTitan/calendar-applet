@@ -26,6 +26,9 @@ after(async () => { await env.cleanup(); });
 const account = (uid) => env.authenticatedContext(uid, {
   email: `${uid}@example.com`, email_verified: true, firebase: { sign_in_provider: 'password', identities: {} },
 }).firestore();
+const unconfirmed = (uid) => env.authenticatedContext(uid, {
+  email: `${uid}@example.com`, email_verified: false, firebase: { sign_in_provider: 'password', identities: {} },
+}).firestore();
 const guest = (uid) => env.authenticatedContext(uid, {
   firebase: { sign_in_provider: 'anonymous', identities: {} },
 }).firestore();
@@ -135,6 +138,19 @@ test('someone who is not signed in cannot create an event', async () => {
 
 test('a guest without an account cannot create an event', async () => {
   await assertFails(setDoc(doc(guest('gus'), 'events/ev100000000000000000'), eventData('gus')));
+});
+
+test('an account whose email is not confirmed yet cannot create an event', async () => {
+  await assertFails(setDoc(doc(unconfirmed('nina'), 'events/ev100000000000000000'), eventData('nina')));
+});
+
+test('an organizer who created events keeps control of them whatever their sign-in token says', async () => {
+  await seedEvent('ev1', 'nina');
+  await seedAnswer('gus');
+  const db = unconfirmed('nina');
+  await assertSucceeds(getDocs(collection(db, 'events/ev100000000000000000/responses')));
+  await assertSucceeds(updateDoc(doc(db, 'events/ev100000000000000000'), { open: false, updatedAt: serverTimestamp() }));
+  await assertSucceeds(deleteDoc(doc(db, 'events/ev100000000000000000')));
 });
 
 test('an organizer cannot create an event in someone else\'s name', async () => {

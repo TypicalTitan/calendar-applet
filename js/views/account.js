@@ -12,7 +12,7 @@ export function accountView({ navigate }) {
   // ---- name
   const name = field({ label: 'Your name', control: h('input', { class: 'input', type: 'text', autocomplete: 'name', maxlength: 60, value: account.name }) });
   const saveName = h('button', { type: 'submit', class: 'btn btn-quiet' }, 'Save name');
-  const nameForm = h('form', { class: 'sheet stack', novalidate: true }, h('h2', null, 'Profile'), name.el, h('div', null, saveName));
+  const nameForm = h('form', { class: 'sheet stack', method: 'post', novalidate: true }, h('h2', null, 'Profile'), name.el, h('div', null, saveName));
   nameForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const cleaned = tidyLine(name.input.value).slice(0, 60);
@@ -36,7 +36,7 @@ export function accountView({ navigate }) {
   resend.addEventListener('click', async () => {
     resend.disabled = true;
     try { await resendVerification(); toast('Confirmation email sent'); } catch (error) { toast(error.message); }
-    setTimeout(() => { resend.disabled = false; }, 30_000);
+    setTimeout(() => { resend.disabled = false; }, 60_000);
   });
   const recheck = h('button', { type: 'button', class: 'btn btn-quiet btn-small' }, 'I’ve confirmed');
   recheck.addEventListener('click', async () => {
@@ -54,7 +54,7 @@ export function accountView({ navigate }) {
   const next = field({ label: 'New password', control: h('input', { class: 'input', type: 'password', autocomplete: 'new-password', required: true, minlength: PASSWORD_MIN, maxlength: 128 }), hint: `At least ${PASSWORD_MIN} characters.` });
   const passwordError = h('p', { class: 'form-error', role: 'alert', hidden: true });
   const savePassword = h('button', { type: 'submit', class: 'btn btn-quiet' }, 'Change password');
-  const passwordForm = h('form', { class: 'sheet stack', novalidate: true },
+  const passwordForm = h('form', { class: 'sheet stack', method: 'post', novalidate: true },
     h('h2', null, 'Password'),
     // A hidden user-name field lets password managers file the new password under the right account.
     h('input', { type: 'email', autocomplete: 'username', value: account.email, hidden: true, readonly: true, tabindex: '-1', 'aria-hidden': 'true' }),

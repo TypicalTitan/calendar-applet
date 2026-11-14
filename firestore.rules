@@ -5,7 +5,7 @@ rules_version = '2';
 // events/{eventId}
 //   read one       anyone who knows the id (the id is the invite link's secret)
 //   list           only your own events
-//   create         a signed-in account holder, as themselves, with every field checked
+//   create         an account holder with a confirmed email, as themselves, every field checked
 //   update         the organizer; only the name, note and open/closed flag can change
 //   delete         the organizer
 //
@@ -25,9 +25,11 @@ service cloud.firestore {
     }
 
     // Invitees are signed in "anonymously" so that each browser has an identity of its own.
-    // Only people with a real account may create events.
-    function hasAccount() {
-      return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    // Only people with a real account, whose email address they have confirmed, may create events.
+    function hasConfirmedAccount() {
+      return signedIn()
+        && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && request.auth.token.email_verified == true;
     }
 
     function eventPath(eventId) {
@@ -91,7 +93,7 @@ service cloud.firestore {
         && request.query.limit <= 100;
 
       // The id is the secret in the invite link, so it must be a full-length random one.
-      allow create: if hasAccount()
+      allow create: if hasConfirmedAccount()
         && eventId.matches('^[A-Za-z0-9]{20}$')
         && request.resource.data.ownerUid == request.auth.uid
         && validEvent(request.resource.data)
