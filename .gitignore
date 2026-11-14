@@ -4,7 +4,7 @@ playwright-report/
 *.log
 .firebase/
 .DS_Store
-.claude/
+.claude/worktrees/
 review-firebase.json
 _site/
 docs/shots/
