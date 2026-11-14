@@ -183,6 +183,9 @@ test('on a shared computer a second person can add a separate answer', async ({ 
   const { context, page: shared } = await answerAsGuest(browser, link, 'Ana', [`${days[0].cell}, 9:00 AM`]);
   await shared.reload();
   await shared.getByRole('button', { name: 'Someone else? Add a separate answer' }).click();
+  // It asks first: the first person's answer can no longer be changed from this browser afterwards.
+  await expect(shared.getByRole('dialog')).toContainText('Ana');
+  await shared.getByRole('dialog').getByRole('button', { name: 'Start a separate answer' }).click();
   await expect(shared.getByLabel('Your name')).toHaveValue('');
   await shared.getByLabel('Your name').fill('Ben');
   await shared.getByRole('gridcell', { name: `${days[0].cell}, 10:00 AM`, exact: true }).click();
@@ -341,4 +344,91 @@ test('an organizer with more than a hundred events sees them all, and deleting t
   await page.getByRole('dialog').getByRole('button', { name: 'Delete account' }).click();
   await expect(page.getByText('Account deleted')).toBeVisible({ timeout: 60_000 });
   expect(await countEventsOwnedBy(uid)).toBe(0);
+});
+
+test('a link with a stray percent sign leads to a plain message, not a stuck page', async ({ page }) => {
+  for (const hash of ['#/e/%', '#/e/%E0%A4%A', '#/%zz']) {
+    await page.goto(hash);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/nothing at this address|can’t find that event/);
+  }
+});
+
+test('an invite link written with ?e= instead of # opens the same event', async ({ page, baseURL }) => {
+  await signUp(page);
+  const { title, link } = await createEvent(page);
+  const id = link.split('#/e/')[1];
+  await page.goto(`${baseURL}?e=${id}`);
+  await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`#/e/${id}$`));
+});
+
+test('with no connection, the invite page says so instead of something vague', async ({ page, context }) => {
+  await signUp(page);
+  const { link } = await createEvent(page);
+  await page.goto('./');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await context.route(/:(8\d{3}|9\d{3})\//, (route) => route.abort('internetdisconnected'));
+  await page.goto(link);
+  await expect(page.getByRole('alert')).toContainText('couldn’t reach the server');
+});
+
+test('a badly formed email on the sign-up form gets a message about the email', async ({ page }) => {
+  await page.goto('#/sign-up');
+  await page.getByLabel('Your name').fill('Olga');
+  await page.getByLabel('Email').fill('foo@@bar.com');
+  await page.getByLabel('Password', { exact: true }).fill('correct horse battery');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page.getByText('Enter an email address, like name@example.com.')).toBeVisible();
+  await expect(page.getByText('match an account')).toHaveCount(0);
+});
+
+test('the table view shows names as typed, without spreadsheet escapes', async ({ page, browser }) => {
+  await signUp(page);
+  const { days, link } = await createEvent(page);
+  await (await answerAsGuest(browser, link, '@lex', [`${days[0].cell}, 9:00 AM`])).context.close();
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await page.getByRole('button', { name: 'Show as a table' }).click();
+  const table = page.getByRole('region', { name: 'Answers as a table' });
+  await expect(table.getByRole('columnheader', { name: '@lex', exact: true })).toBeVisible();
+});
+
+test('a name with nothing visible in it is refused', async ({ page, browser }) => {
+  await signUp(page);
+  const { link } = await createEvent(page);
+  const context = await browser.newContext(NY);
+  const guest = await context.newPage();
+  await guest.goto(link);
+  await guest.getByLabel('Your name').fill('\u200D\u3164');
+  await guest.getByRole('button', { name: 'Save my times' }).click();
+  await expect(guest.getByText('Enter your name so the organizer knows who you are.')).toBeVisible();
+  await context.close();
+});
+
+test('an answer given as a guest stays editable when an organizer signs in and out on the same browser', async ({ page, browser }) => {
+  const organizer = await signUp(page);
+  const { days, link } = await createEvent(page);
+  const { context, page: shared } = await answerAsGuest(browser, link, 'Pat', [`${days[0].cell}, 9:00 AM`]);
+
+  // Somebody with an account signs in on that browser.
+  await shared.goto('#/sign-in');
+  await shared.getByLabel('Email').fill(organizer.email);
+  await shared.getByLabel('Password', { exact: true }).fill(organizer.password);
+  await shared.getByRole('button', { name: 'Sign in' }).click();
+  await expect(shared.getByRole('heading', { name: 'Your events' })).toBeVisible();
+  await shared.goto(link);
+  await expect(shared.getByLabel('Your name')).toHaveValue('Pat');
+  await expect(shared.getByRole('gridcell', { name: `${days[0].cell}, 9:00 AM`, exact: true })).toHaveAttribute('aria-selected', 'true');
+
+  // ...and signs out again. Pat's answer is still Pat's to change or remove.
+  await shared.getByRole('button', { name: 'Sign out' }).click();
+  await shared.goto(link);
+  await expect(shared.getByLabel('Your name')).toHaveValue('Pat');
+  await shared.getByRole('gridcell', { name: `${days[1].cell}, 1:00 PM`, exact: true }).click();
+  await shared.getByRole('button', { name: 'Save my times' }).click();
+  await expect(shared.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible({ timeout: 15_000 });
+  await context.close();
+
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await expect(page.getByText('1 answer', { exact: true })).toBeVisible();
+  await expect(page.getByRole('gridcell', { name: `${days[1].cell}, 1:00 PM, 1 of 1 free` })).toBeVisible();
 });

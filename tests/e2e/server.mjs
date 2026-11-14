@@ -5,7 +5,7 @@
 // Everything else in the policy stays enforced, so a policy that breaks the site breaks the tests.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -32,6 +32,12 @@ const TEST_CONFIG = `export const config = {
 const UNCONFIGURED = `export const config = { appName: 'Overlap', firebase: { apiKey: '', authDomain: '', projectId: '', appId: '' } };\n`;
 
 createServer(async (req, res) => {
+  // Answer only when addressed as this machine, so another site cannot reach the files through a
+  // DNS name it controls.
+  if (!/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.host || '')) {
+    res.writeHead(421, { 'Content-Type': 'text/plain' }).end('Misdirected request');
+    return;
+  }
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/' || url.pathname === BASE) {
     res.writeHead(302, { Location: `${BASE}/` }).end();
@@ -44,8 +50,10 @@ createServer(async (req, res) => {
   let path = decodeURIComponent(url.pathname.slice(BASE.length));
   if (path.endsWith('/')) path += 'index.html';
   const file = normalize(join(root, path));
-  if (!file.startsWith(root)) {
-    res.writeHead(403).end();
+  const inside = relative(root, file);
+  // Only files inside the site, and nothing hidden (.git, .claude, .github ...).
+  if (inside.startsWith('..') || isAbsolute(inside) || inside.split(/[\\/]/).some((part) => part.startsWith('.') && part !== '.nojekyll')) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' }).end('Forbidden');
     return;
   }
   try {

@@ -16,7 +16,6 @@ export {
   updateProfile,
   updatePassword,
   reauthenticateWithCredential,
-  linkWithCredential,
   EmailAuthProvider,
   deleteUser,
   validatePassword,

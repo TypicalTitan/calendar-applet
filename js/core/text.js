@@ -25,6 +25,15 @@ export function tidyText(value) {
     .trim();
 }
 
+// Everything that takes up no ink: format characters, combining marks on their own, spaces, and
+// the "filler" letters that render as blanks.
+const NOTHING_TO_SEE = /[\p{Cf}\p{Mn}\p{Z}\u034F\u115F\u1160\u2800\u3164\uFFA0]/gu;
+
+/** True when the text would show as nothing at all. */
+export function looksBlank(text) {
+  return text.replace(NOTHING_TO_SEE, '') === '';
+}
+
 /** Shortens to at most `max` UTF-16 units without cutting a character in half. */
 export function truncate(text, max) {
   let out = '';

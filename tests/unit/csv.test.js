@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { csvCell, safeText, toCsv, gridRows, rangeRows, exportFileName } from '../../js/core/csv.js';
+import { csvCell, safeText, toCsv, gridRows, rangeRows, exportFileName, columnNames } from '../../js/core/csv.js';
 import { buildSlots } from '../../js/core/slots.js';
 
 test('csvCell quotes only when a value needs it and doubles embedded quotes', () => {
@@ -103,4 +103,24 @@ test('exportFileName is safe on every operating system', () => {
   assert.equal(exportFileName('', 'grid'), 'event-grid.csv');
   assert.equal(exportFileName('Fête d\'été 🎉', 'grid'), 'fête-d-été-grid.csv');
   assert.ok(exportFileName('x'.repeat(300), 'grid').length <= 80);
+});
+
+test('safeText also disarms a formula hidden after a semicolon', () => {
+  // Spreadsheets in many countries split CSV lines on semicolons, so each one starts a new cell.
+  assert.equal(safeText('x;=1+1;'), "x;'=1+1;");
+  assert.equal(safeText('a; =WEBSERVICE(A1)'), "a; '=WEBSERVICE(A1)");
+  assert.equal(safeText('one;two;+3;@four'), "one;two;'+3;'@four");
+  assert.equal(safeText('Smith; Jr.'), 'Smith; Jr.');
+});
+
+test('columnNames numbers repeated names, with or without the spreadsheet escape', () => {
+  const people = [{ name: '=Ben' }, { name: 'Sam' }, { name: 'Sam' }];
+  assert.deepEqual(columnNames(people), ["'=Ben", 'Sam', 'Sam (2)']);
+  assert.deepEqual(columnNames(people, { escape: false }), ['=Ben', 'Sam', 'Sam (2)']);
+});
+
+test('exportFileName never cuts a character in half', () => {
+  const name = exportFileName('\u{20BB7}'.repeat(50), 'grid');
+  assert.equal(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(name), false);
+  assert.equal(name.endsWith('-grid.csv'), true);
 });

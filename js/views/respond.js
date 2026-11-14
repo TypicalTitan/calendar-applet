@@ -3,7 +3,7 @@
 import { h, replace, field, toast, confirmDialog } from '../ui/dom.js';
 import { createPaintGrid } from '../ui/grid.js';
 import { zoneChooser } from '../ui/zone.js';
-import { getEvent, getMyAnswer, saveMyAnswer, deleteMyAnswer, getUser, getAccount, signOut, SAVE_PAUSE } from '../backend.js';
+import { getEvent, getMyAnswer, saveMyAnswer, deleteMyAnswer, getAccount, forgetGuest, SAVE_PAUSE } from '../backend.js';
 import { buildSlots, slotWall } from '../core/slots.js';
 import { cleanName, fromAnswer, toAnswer, NAME_MAX } from '../core/availability.js';
 import { duration, eventSummary, shortDate, timeLabel } from '../ui/format.js';
@@ -32,7 +32,7 @@ export function respondView({ params }) {
       return;
     }
     document.title = `${event.title} · ${document.title.split(' · ').pop()}`;
-    const mine = getUser() ? await getMyAnswer(event).catch(() => null) : null;
+    const mine = await getMyAnswer(event).catch(() => null);
     if (disposed) return;
     page.dispose = build(event, mine);
   }).catch((error) => {
@@ -44,6 +44,7 @@ export function respondView({ params }) {
     const account = getAccount();
     const isOrganizer = account && account.uid === event.ownerUid;
     let saved = existing;                         // what is stored, or null
+    let savedAs = existing?.as;                   // whose answer it is: 'account' or 'guest'
     let bits = fromAnswer(existing?.slots, slots.count);
     let dirty = false;
     // The database refuses a second save within a few seconds of the last one. Rather than show
@@ -113,7 +114,7 @@ export function respondView({ params }) {
       try {
         const slotsText = toAnswer(bits);
         await pause();
-        await saveMyAnswer(event, { name: cleaned, slots: slotsText });
+        savedAs = await saveMyAnswer(event, { name: cleaned, slots: slotsText }, savedAs);
         lastWriteAt = Date.now();
         saved = { name: cleaned, slots: slotsText };
         dirty = false;
@@ -140,7 +141,8 @@ export function respondView({ params }) {
       if (!ok) return;
       try {
         await pause();
-        await deleteMyAnswer(event);
+        await deleteMyAnswer(event, savedAs);
+        savedAs = undefined;
         lastWriteAt = 0;
         saved = null;
         dirty = false;
@@ -158,13 +160,20 @@ export function respondView({ params }) {
 
     // Guests are recognised by their browser. On a shared computer the next person would
     // otherwise be editing the first person's answer without realising.
-    const someoneElse = h('p', { class: 'banner banner-plain', hidden: !(existing && getUser()?.guest) },
+    const someoneElse = h('p', { class: 'banner banner-plain', hidden: !(existing && existing.as === 'guest') },
       h('span', null, `These are the times saved from this browser as ${existing?.name || ''}. `),
       h('button', { type: 'button', class: 'linklike', onclick: startFresh }, 'Someone else? Add a separate answer'));
     async function startFresh() {
+      const ok = await confirmDialog({
+        title: 'Start a separate answer?',
+        body: `${saved?.name || 'The first person'}’s answer stays with the organizer, but it can no longer be changed or removed from this browser. Do this only if you are a different person.`,
+        confirmLabel: 'Start a separate answer',
+      });
+      if (!ok) return;
       try {
-        await signOut();
+        await forgetGuest();
         saved = null;
+        savedAs = undefined;
         dirty = false;
         lastWriteAt = 0;
         bits = new Uint8Array(slots.count);

@@ -5,7 +5,7 @@
 // Hash addresses need no server set-up, so they work on GitHub Pages as they are.
 
 import { config } from './config.js';
-import { isConfigured, startBackend, getAccount, getUser, onUserChange, signOut } from './backend.js';
+import { isConfigured, startBackend, getAccount, onUserChange, signOut } from './backend.js';
 import { h, replace, logoMark, toast } from './ui/dom.js';
 import { homeView } from './views/home.js';
 import { signInView, signUpView, resetView } from './views/auth.js';
@@ -102,7 +102,13 @@ function render() {
       navigate(next, { replaceEntry: true });
       return;
     }
-    show(route.view, route, match.slice(1).map(decodeURIComponent));
+    let params;
+    try {
+      params = match.slice(1).map(decodeURIComponent);
+    } catch {
+      break; // a mangled link (a stray "%"): treat it as an address that leads nowhere
+    }
+    show(route.view, route, params);
     return;
   }
   show(notFoundView, null, []);
@@ -131,6 +137,13 @@ async function start() {
     return;
   }
 
+  // Invite links may also be written .../?e=<event id>, for the rare mail system that drops
+  // everything after a "#". Turn that into the usual address.
+  const invited = new URLSearchParams(window.location.search).get('e');
+  if (invited && !window.location.hash) {
+    window.history.replaceState(null, '', `${window.location.pathname}#/e/${encodeURIComponent(invited)}`);
+  }
+
   frame();
   if (!isConfigured(config)) {
     replace(nav);
@@ -157,14 +170,11 @@ async function start() {
     drawNav();
     const route = current?.route;
     if (!route) return;
-    // Re-route only when the change locks this page or makes it pointless. Other pages stay
-    // put: an invitee being signed in as a guest mid-save must not lose what they typed.
+    // Re-route only when the change locks this page or makes it pointless; other pages stay put.
     if ((route.needsAccount && !getAccount()) || (route.signedOutOnly && getAccount())) render();
   });
   window.addEventListener('hashchange', render);
   render();
 }
-
-export { getUser };
 
 start();

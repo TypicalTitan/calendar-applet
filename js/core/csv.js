@@ -4,6 +4,7 @@
 import { slotWall } from './slots.js';
 import { fromAnswer, countAvailable } from './availability.js';
 import { utcToWall } from './tz.js';
+import { truncate } from './text.js';
 
 const MINUTE = 60000;
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -17,15 +18,20 @@ export function csvCell(value) {
   return /[",\r\n]|^\s|\s$/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
+const FORMULA_START = '=+\\-@\\uFF1D\\uFF0B\\uFF0D\\uFF20';
+const STARTS_FORMULA = new RegExp(`^[${FORMULA_START}]`);
+const FORMULA_AFTER_SEMICOLON = new RegExp(`;(\\s*)(?=[${FORMULA_START}])`, 'g');
+
 /**
  * Makes text typed by a person safe to put in a cell. Line breaks and tabs become spaces, and a
- * leading character that would make a spreadsheet treat the cell as a formula (including the
- * full-width look-alikes) gets an apostrophe in front, which spreadsheets read as "plain text"
- * (OWASP "CSV injection").
+ * character that would make a spreadsheet treat the cell as a formula (including the full-width
+ * look-alikes) gets an apostrophe in front, which spreadsheets read as "plain text" (OWASP "CSV
+ * injection"). That applies at the start of the text and after every semicolon: spreadsheets in
+ * many countries split CSV lines on semicolons, so each one can begin a new cell.
  */
 export function safeText(text) {
-  const flat = String(text).replace(/[\t\r\n]+/g, ' ').trim();
-  return /^[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/.test(flat) ? `'${flat}` : flat;
+  const flat = String(text).replace(/[\t\r\n]+/g, ' ').trim().replace(FORMULA_AFTER_SEMICOLON, ";$1'");
+  return STARTS_FORMULA.test(flat) ? `'${flat}` : flat;
 }
 
 /** Rows to a CSV file body: UTF-8 byte-order mark so Excel reads accents, CRLF line endings. */
@@ -33,12 +39,17 @@ export function toCsv(rows) {
   return '\uFEFF' + rows.map((row) => row.map(csvCell).join(',') + '\r\n').join('');
 }
 
-function columnNames(responses) {
+/**
+ * A column heading per person: their name, numbered when it repeats ("Sam", "Sam (2)").
+ * Headings are made safe for spreadsheets unless `escape` is false (for showing on a page).
+ */
+export function columnNames(responses, { escape = true } = {}) {
   const seen = new Map();
   return responses.map((r) => {
     const n = (seen.get(r.name) || 0) + 1;
     seen.set(r.name, n);
-    return safeText(n === 1 ? r.name : `${r.name} (${n})`);
+    const heading = n === 1 ? r.name : `${r.name} (${n})`;
+    return escape ? safeText(heading) : heading;
   });
 }
 
@@ -95,8 +106,7 @@ export function exportFileName(title, kind) {
   const slug = String(title || '')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60)
-    .replace(/-+$/g, '');
-  return `${slug || 'event'}-${kind}.csv`;
+    .replace(/^-+|-+$/g, '');
+  const short = truncate(slug, 60).replace(/-+$/g, '');
+  return `${short || 'event'}-${kind}.csv`;
 }

@@ -7,7 +7,7 @@ import { zoneChooser } from '../ui/zone.js';
 import { getEvent, listAnswers, listAnswersSince, updateEvent, deleteEvent, deleteAnswer, getAccount, ANSWER_LIMIT } from '../backend.js';
 import { buildSlots, slotWall } from '../core/slots.js';
 import { countAvailable, fromAnswer, bestWindows } from '../core/availability.js';
-import { gridRows, rangeRows, toCsv, exportFileName } from '../core/csv.js';
+import { gridRows, rangeRows, toCsv, exportFileName, columnNames } from '../core/csv.js';
 import { validateEvent, LIMITS } from '../core/validate.js';
 import {
   eventSummary, timeRange, longDate, shortDate, timeLabel, duration, plural, ago, listNames,
@@ -301,7 +301,7 @@ export function resultsView({ params, navigate, appName }) {
 
     function dataTable() {
       const rows = gridRows(event, slots, answers, zone);
-      const head = ['Day', 'Time', 'Free', ...rows[0].slice(8)];
+      const head = ['Day', 'Time', 'Free', ...columnNames(answers, { escape: false })];
       return h('div', { class: 'table-wrap', tabindex: '0', role: 'region', 'aria-label': 'Answers as a table' },
         h('table', { class: 'data-table' },
           h('thead', null, h('tr', null, head.map((text, i) => h('th', { scope: 'col', class: i === 2 ? 'num' : null }, text)))),

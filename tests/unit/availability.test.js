@@ -116,3 +116,11 @@ test('heatScale copes with nobody free anywhere', () => {
   assert.equal(scale.classOf(0), 0);
   assert.deepEqual(scale.ranges, [[0, 0]]);
 });
+
+test('cleanName treats a name with nothing visible in it as no name at all', () => {
+  for (const blank of ['\u200D', '\u00AD', '\u3164', '\u2800', '\u200E', '\u034F', '\u200D\u200C \u3164', '\u0301']) {
+    assert.equal(cleanName(blank), '', JSON.stringify(blank));
+  }
+  assert.equal(cleanName('\u0639\u0644\u06CC\u200C\u0631\u0636\u0627'), '\u0639\u0644\u06CC\u200C\u0631\u0636\u0627'); // a Persian name keeps its joiner
+  assert.equal(cleanName('Zo\u00EB'), 'Zo\u00EB');
+});

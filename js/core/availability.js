@@ -3,7 +3,7 @@
 // One person's answer is a string with one character per slot: "1" free, "0" not.
 // That shape is easy for the database rules to check and cheap to store.
 
-import { tidyLine, truncate } from './text.js';
+import { tidyLine, truncate, looksBlank } from './text.js';
 
 export const NAME_MAX = 60;
 
@@ -115,5 +115,6 @@ function prefixSums(flags, count) {
 
 /** Tidies a typed name: no control or invisible characters, single spaces, at most NAME_MAX long. */
 export function cleanName(value, max = NAME_MAX) {
-  return truncate(tidyLine(value), max).trim();
+  const name = truncate(tidyLine(value), max).trim();
+  return looksBlank(name) ? '' : name;
 }

@@ -1,16 +1,18 @@
 // Everything that talks to Firebase lives here. Pages call these functions and never import the
 // Firebase SDK themselves, so the rest of the site is plain DOM code that is easy to follow.
 //
-// Accounts:  Firebase Authentication (email and password). Invitees are signed in "anonymously":
-//            no name, email or password, just an identity tied to their browser so that they,
-//            and only they, can come back and change their own answer.
+// Accounts:  Firebase Authentication (email and password) for organizers.
+// Guests:    Invitees are signed in "anonymously": no name, email or password, just an identity
+//            tied to their browser so that they, and only they, can come back and change their
+//            own answer. That identity lives in a second, separate Firebase session, so an
+//            organizer signing in or out on the same browser never disturbs it.
 // Data:      Cloud Firestore, protected by firestore.rules.
 
 import {
   initializeApp, initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, connectAuthEmulator,
   onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInAnonymously,
   signOut as fbSignOut, sendEmailVerification, sendPasswordResetEmail, updateProfile, updatePassword,
-  reauthenticateWithCredential, linkWithCredential, EmailAuthProvider, deleteUser, validatePassword, reload,
+  reauthenticateWithCredential, EmailAuthProvider, deleteUser, validatePassword, reload,
   getFirestore, connectFirestoreEmulator, doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
   query, where, orderBy, startAfter, documentId, limit, serverTimestamp, writeBatch, Timestamp,
 } from './vendor/firebase.js';
@@ -20,6 +22,10 @@ import { cleanName, isAnswer, emptyAnswer } from './core/availability.js';
 
 let auth = null;
 let db = null;
+let settings = null;
+let guestAuth = null;  // the separate session that holds this browser's guest identity
+let guestDb = null;
+let guestReady = null;
 let currentUser; // undefined until Firebase has reported the sign-in state once
 const listeners = new Set();
 let ready;
@@ -31,16 +37,32 @@ export function isConfigured(config) {
 }
 
 /** Starts Firebase. Resolves once we know whether somebody is signed in. */
-export function startBackend(config) {
-  const app = initializeApp(config.firebase);
-  // No pop-up or redirect sign-in is used, so none of that code (or its third-party scripts and
-  // frames) is loaded: sign-in state is simply kept in this browser's storage.
-  auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
-  db = getFirestore(app);
-  if (config.emulators) {
-    connectAuthEmulator(auth, config.emulators.auth, { disableWarnings: true });
-    connectFirestoreEmulator(db, ...config.emulators.firestore);
+// One Firebase session: its sign-in state and its database handle. No pop-up or redirect sign-in
+// is used, so none of that code (or its third-party scripts and frames) is loaded: sign-in state
+// is simply kept in this browser's storage, under the session's name.
+function openSession(name) {
+  const app = name ? initializeApp(settings.firebase, name) : initializeApp(settings.firebase);
+  const sessionAuth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
+  const sessionDb = getFirestore(app);
+  if (settings.emulators) {
+    connectAuthEmulator(sessionAuth, settings.emulators.auth, { disableWarnings: true });
+    connectFirestoreEmulator(sessionDb, ...settings.emulators.firestore);
   }
+  return { auth: sessionAuth, db: sessionDb };
+}
+
+/** Opens the guest session the first time it is needed and waits until its state is known. */
+function guestSession() {
+  if (!guestReady) {
+    ({ auth: guestAuth, db: guestDb } = openSession('guest'));
+    guestReady = guestAuth.authStateReady();
+  }
+  return guestReady;
+}
+
+export function startBackend(config) {
+  settings = config;
+  ({ auth, db } = openSession(null));
   ready = new Promise((resolve) => {
     onAuthStateChanged(auth, (user) => {
       currentUser = toUser(user);
@@ -52,24 +74,18 @@ export function startBackend(config) {
 }
 
 function toUser(user) {
-  if (!user) return null;
+  if (!user || user.isAnonymous) return null;
   return {
     uid: user.uid,
     email: user.email || '',
     name: user.displayName || '',
     verified: user.emailVerified,
-    guest: user.isAnonymous,
   };
 }
 
-/** The signed-in person ({ uid, email, name, verified, guest }) or null. */
-export function getUser() {
-  return currentUser ?? null;
-}
-
-/** The signed-in account holder, or null for nobody and for guests. */
+/** The signed-in organizer ({ uid, email, name, verified }) or null. Guests are not accounts. */
 export function getAccount() {
-  return currentUser && !currentUser.guest ? currentUser : null;
+  return currentUser ?? null;
 }
 
 export function onUserChange(listener) {
@@ -96,6 +112,13 @@ const OFFLINE = 'We couldn’t reach the server. Check your connection and try a
 
 function friendly(error, fallback) {
   const code = error?.code || '';
+  // The database SDK reports a request that never got through as "unknown: Failed to fetch".
+  const unreachable = code === 'unknown' && /failed to fetch|networkerror|load failed|network request failed/i.test(error?.message || '');
+  if (code === 'auth/network-request-failed' || code === 'unavailable' || unreachable
+    || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+    return new FriendlyError(OFFLINE, code);
+  }
+  if (fallback?.byCode?.[code]) return new FriendlyError(fallback.byCode[code], code);
   // Wrong password, unknown email and malformed email all get the same answer, so the form never
   // reveals whether an address has an account.
   if (['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found', 'auth/invalid-email',
@@ -105,7 +128,6 @@ function friendly(error, fallback) {
   if (code === 'auth/too-many-requests') {
     return new FriendlyError('Too many attempts. Wait a few minutes and try again, or reset your password.', code);
   }
-  if (code === 'auth/network-request-failed' || code === 'unavailable') return new FriendlyError(OFFLINE, code);
   if (code === 'auth/email-already-in-use' || code === 'auth/credential-already-in-use') {
     return new FriendlyError('That email can’t be used for a new account. If it’s yours, sign in or reset your password.', code);
   }
@@ -191,25 +213,14 @@ export function signUp({ name, email, password }) {
     // gone out, so nothing is shown half-made.
     settingUpAccount = true;
     try {
-      let user;
-      if (auth.currentUser?.isAnonymous) {
-        // This browser already answered an invite as a guest. Turn that guest into the new
-        // account so the answers stay theirs.
-        await linkWithCredential(auth.currentUser, EmailAuthProvider.credential(email, password));
-        // Sign in afresh so the session is a password sign-in in its own right, which is what
-        // the database rules look for, rather than a guest session with a password attached.
-        ({ user } = await signInWithEmailAndPassword(auth, email, password));
-      } else {
-        ({ user } = await createUserWithEmailAndPassword(auth, email, password));
-      }
+      const { user } = await createUserWithEmailAndPassword(auth, email, password);
       if (name) await updateProfile(user, { displayName: name });
       try { await sendVerification(user); } catch (error) { console.warn('Confirmation email not sent', error); }
-      await user.getIdToken(true); // so the database sees an account, not a guest, straight away
     } finally {
       settingUpAccount = false;
       refreshUser();
     }
-  });
+  }, { byCode: { 'auth/invalid-email': 'Enter an email address, like name@example.com.' } });
 }
 
 export function signIn({ email, password }) {
@@ -440,21 +451,42 @@ export function listAnswersSince(event, since) {
 
 export const ANSWER_LIMIT = MOST_ANSWERS;
 
-/** The answer saved from this browser, or null. */
+// Whose answer is being read or written: the signed-in organizer's own ("account"), or the one
+// belonging to this browser's guest identity ("guest").
+function session(as) {
+  return as === 'account' ? { auth, db } : { auth: guestAuth, db: guestDb };
+}
+
+/**
+ * The answer already saved from this browser, or null. `as` on the result says whose it is:
+ * the signed-in account's own answer comes first, otherwise the browser's guest answer.
+ */
 export function getMyAnswer(event) {
   return attempt(async () => {
-    if (!auth.currentUser) return null;
-    const snapshot = await getDoc(doc(db, 'events', event.id, 'responses', auth.currentUser.uid));
-    return snapshot.exists() ? readAnswer(snapshot, event.slotCount) : null;
+    await guestSession();
+    for (const as of ['account', 'guest']) {
+      const who = session(as);
+      if (!who.auth.currentUser || (as === 'account' && who.auth.currentUser.isAnonymous)) continue;
+      const snapshot = await getDoc(doc(who.db, 'events', event.id, 'responses', who.auth.currentUser.uid));
+      if (snapshot.exists()) return { ...readAnswer(snapshot, event.slotCount), as };
+    }
+    return null;
   });
 }
 
-/** Saves this person's answer, signing them in as a guest first if they are nobody yet. */
-export function saveMyAnswer(event, { name, slots }) {
+/**
+ * Saves this person's answer and returns whose it was saved as. An answer being edited stays
+ * with the identity it came from (`as`). A new one belongs to the signed-in account if there is
+ * one, otherwise to the browser's guest identity, which is created at this moment if need be.
+ */
+export function saveMyAnswer(event, { name, slots }, as) {
   return attempt(async () => {
-    if (!auth.currentUser) {
+    await guestSession();
+    const identity = as || (getAccount() ? 'account' : 'guest');
+    const who = session(identity);
+    if (identity === 'guest' && !who.auth.currentUser) {
       try {
-        await signInAnonymously(auth);
+        await signInAnonymously(who.auth);
       } catch (error) {
         // Firebase limits how many new people can appear from one network address in an hour.
         if (error?.code === 'auth/too-many-requests' || error?.code === 'auth/quota-exceeded') {
@@ -463,7 +495,7 @@ export function saveMyAnswer(event, { name, slots }) {
         throw error;
       }
     }
-    const ref = doc(db, 'events', event.id, 'responses', auth.currentUser.uid);
+    const ref = doc(who.db, 'events', event.id, 'responses', who.auth.currentUser.uid);
     const write = async () => {
       const existing = await getDoc(ref);
       if (existing.exists()) await updateDoc(ref, { name, slots, updatedAt: serverTimestamp() });
@@ -475,20 +507,36 @@ export function saveMyAnswer(event, { name, slots }) {
       if (error?.code !== 'permission-denied') throw error;
       // Refused: either the organizer has closed the event, or this answer was saved a moment
       // ago (from another tab, say) and the pause between saves has not passed yet.
-      const now = await getDoc(doc(db, 'events', event.id));
+      const now = await getDoc(doc(who.db, 'events', event.id));
       if (!now.exists() || now.data().open !== true) throw error;
       await sleep(SAVE_PAUSE_MS);
       await write();
     }
+    return identity;
   }, { denied: 'Your times couldn’t be saved. The organizer may have just closed this event.' });
 }
 
 /** How long a page should wait after one save before sending the next. */
 export const SAVE_PAUSE = SAVE_PAUSE_MS;
 
-export function deleteMyAnswer(event) {
+/** Removes the answer saved as `as` ("account" or "guest"). */
+export function deleteMyAnswer(event, as) {
   return attempt(async () => {
-    if (auth.currentUser) await deleteDoc(doc(db, 'events', event.id, 'responses', auth.currentUser.uid));
+    await guestSession();
+    const who = session(as);
+    if (who.auth.currentUser) await deleteDoc(doc(who.db, 'events', event.id, 'responses', who.auth.currentUser.uid));
+  });
+}
+
+/**
+ * Forgets this browser's guest identity, so the next answer saved here is a new person's.
+ * Answers already saved under the old identity stay with their organizers but can no longer be
+ * changed from this browser.
+ */
+export function forgetGuest() {
+  return attempt(async () => {
+    await guestSession();
+    await fbSignOut(guestAuth);
   });
 }
 
