@@ -12,9 +12,9 @@ export const config = {
   appName: 'Overlap',
 
   firebase: {
-    apiKey: '',
-    authDomain: '',
-    projectId: '',
-    appId: '',
+    apiKey: 'AIzaSyBP7-zO1TZ-75cCeXHIOlcVfpL0iaZ9Pn0',
+    authDomain: 'overlap-b7913.firebaseapp.com',
+    projectId: 'overlap-b7913',
+    appId: '1:1097920125314:web:ea3c5dd54685832940579b',
   },
 };
