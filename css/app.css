@@ -41,8 +41,10 @@
   --marker: #1e9e57;
   --marker-soft: #bfe6cd;
   --marker-ink: #0b5a2e;
-  --heat-lo: #cdebd7;
-  --heat-hi: #0a4a24;
+  /* The two ends of the results shading. Checked with the dataviz ordinal validator: lightness
+     falls steadily, and even the lightest step stands 2:1 off the paper. */
+  --heat-lo: #7fc496;
+  --heat-hi: #083d1d;
 
   --danger: #b3261e;
   --danger-wash: #fbeceb;
@@ -79,8 +81,8 @@
     --marker: #3ccb7f;
     --marker-soft: #1d4a30;
     --marker-ink: #86e3ad;
-    --heat-lo: #173a26;
-    --heat-hi: #7ce9a6;
+    --heat-lo: #236741;
+    --heat-hi: #8df0b3;
 
     --danger: #ff8a80;
     --danger-wash: #3a1c1a;
