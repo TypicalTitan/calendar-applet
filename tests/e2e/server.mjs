@@ -8,7 +8,8 @@ import { readFile } from 'node:fs/promises';
 import { extname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
+// SITE_ROOT serves a different folder, for testing the assembled site exactly as it is published.
+const root = resolve(process.env.SITE_ROOT || fileURLToPath(new URL('../..', import.meta.url)));
 const port = Number(process.env.PORT || 4173);
 const BASE = '/calendar-applet'; // served under a sub-path, like a GitHub Pages project site
 
@@ -58,7 +59,7 @@ createServer(async (req, res) => {
   }
   try {
     let body = await readFile(file);
-    if (path === '/js/config.js') {
+    if (/^\/js(-[A-Za-z0-9]+)?\/config\.js$/.test(path)) {
       body = Buffer.from(req.headers.cookie?.includes('unconfigured=1') ? UNCONFIGURED : TEST_CONFIG);
     } else if (path === '/index.html') {
       body = Buffer.from(body.toString('utf8').replace('connect-src', `connect-src ${EMULATOR_ORIGINS}`));

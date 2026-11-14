@@ -53,7 +53,7 @@ export function setupView({ appName }) {
           h('p', null, 'Open Project settings (the gear icon), scroll to Your apps, and add a Web app. Copy the four values it shows into ',
             h('code', null, 'js/config.js'), ' in the repository:'),
           h('pre', null, h('code', null, 'firebase: {\n  apiKey: "…",\n  authDomain: "…",\n  projectId: "…",\n  appId: "…",\n},')),
-          h('p', null, 'Commit the change. A few minutes after GitHub Pages republishes, this page is replaced by the real site.'))),
+          h('p', null, 'Commit the change to the main branch. Once the tests have run and GitHub Pages has republished (a few minutes; see the Actions tab), this page is replaced by the real site.'))),
       h('p', { class: 'muted small' }, 'These values are identifiers, not passwords, and are safe to publish. The README in the repository has the same steps with more detail.')),
   };
 }

@@ -10,10 +10,13 @@
     "vendor": "esbuild scripts/firebase-entry.js --bundle --format=esm --target=es2022 --minify --legal-comments=inline --outfile=js/vendor/firebase.js",
     "test:rules": "firebase emulators:exec --only firestore --project demo-calendar-applet \"node --test tests/rules/*.test.js\"",
     "test:e2e": "firebase emulators:exec --only auth,firestore --project demo-calendar-applet \"playwright test --trace off\"",
-    "serve": "node tests/e2e/server.mjs"
+    "serve": "node tests/e2e/server.mjs",
+    "assemble": "node scripts/assemble-site.mjs",
+    "shots": "firebase emulators:exec --only auth,firestore --project demo-calendar-applet \"node tests/e2e/shots.mjs docs/shots\"",
+    "test:published": "SITE_ROOT=_site firebase emulators:exec --only auth,firestore --project demo-calendar-applet \"playwright test --trace off --project=desktop tests/e2e/flow.spec.js\""
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24.12"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

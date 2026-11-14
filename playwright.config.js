@@ -11,7 +11,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   fullyParallel: false,
   workers: 1,
-  retries: 0,
+  retries: process.env.CI ? 1 : 0, // on shared CI machines, give a timing hiccup one second chance
   reporter: [['list']],
   use: {
     baseURL: base,

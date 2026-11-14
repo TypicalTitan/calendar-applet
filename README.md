@@ -53,11 +53,44 @@ be public. What protects the data is the rules from step 5.
 
 ### 3. Turn on GitHub Pages
 
-In the repository on GitHub: **Settings > Pages > Build and deployment > Source: Deploy from a
-branch**, branch **main**, folder **/ (root)**, **Save**. A minute or two later the site is at
-`https://YOUR-NAME.github.io/calendar-applet/`.
+In the repository on GitHub: **Settings > Pages > Build and deployment > Source: GitHub
+Actions**. That is the only setting. From then on, every push to `main` runs the tests and, if
+they pass, publishes the site to `https://YOUR-NAME.github.io/calendar-applet/` (the first run
+takes several minutes; watch it under the **Actions** tab).
 
 GitHub Pages on the free plan needs the repository to be public.
+
+Publishing this way has two advantages over serving the branch directly: a change that breaks a
+test never goes live, and each release puts the scripts in a freshly named folder, so a
+returning visitor never runs a mix of old and new files.
+
+<details>
+<summary>Prefer the simpler "Deploy from a branch"?</summary>
+
+It works too: choose **Deploy from a branch**, branch **main**, folder **/ (root)**. Then
+delete the `publish` job from `.github/workflows/site.yml`, or it will fail on every push.
+You lose the two advantages above, and visitors may see a half-updated site for up to ten
+minutes after each change.
+
+</details>
+
+### Check it on your real project
+
+The tests in this repository run against Firebase's local emulators, which are close to the
+real service but not identical. After setting up, spend five minutes confirming these on the
+live site:
+
+1. Create an account. The confirmation email arrives (look in spam), and after opening its link
+   the site lets you create an event.
+2. Create an event and open its invite link in a private window. Save an answer without signing
+   in; it appears on your results page after **Refresh**.
+3. In the private window, change the answer and save again.
+4. Back on the results page: download both CSV files, **Close responses**, and check the private
+   window can no longer save.
+5. Delete the event. Its invite link now says the event cannot be found.
+
+If step 1's email never arrives, check *Authentication > Templates* in the Firebase console and
+that step 3 of the setup (authorized domain) was done.
 
 ### Recommended once it works
 
@@ -75,9 +108,13 @@ GitHub Pages on the free plan needs the repository to be public.
 - **Name the sender.** *Authentication > Templates* controls the sender name of the
   confirmation and password-reset emails. They come from a `firebaseapp.com` address, so some
   land in spam; the site tells new organizers to look there.
+- **Add a second owner** to the Firebase project (*Project settings > Users and permissions*),
+  or at least sign in to the console once a year. Google may delete a personal Google account
+  that goes unused for two years, and the project with it.
 - **App Check** (optional) makes it much harder for a script to burn through your free daily
   quota. Enabling it means adding the App Check SDK to `scripts/firebase-entry.js` and the
-  reCAPTCHA hosts to the Content-Security-Policy in `index.html`; it is not wired up here.
+  reCAPTCHA hosts to the Content-Security-Policy in `index.html`; it is not wired up here. If
+  the site is ever abused, this is the lever to reach for.
 
 ## What people can do
 
@@ -108,14 +145,24 @@ times converted to theirs and can switch to the event's zone.
   slot, so changing the slots afterwards would scramble them. Create a new event instead.
 - **Invitees are recognised by their browser, not their name.** That is what stops one person
   overwriting another's answer by typing the same name. The other side of it: someone who
-  clears their browser data, or switches device, cannot edit their old answer. They can answer
-  again and you can remove the old one.
+  clears their browser data, switches device, or opens the link inside another app's built-in
+  browser cannot edit their old answer. They can answer again and you can remove the old one.
+  Signing in or out of an organizer account on the same browser does not affect it.
+- **Nothing expires by itself.** Events, answers and guest identities stay until you delete
+  them. Deleting an event removes its answers and retires its link for good; deleting your
+  account removes all your events. Removing old events once in a while is good manners towards
+  the people whose names are in them.
 - **The invite link is the key to the event.** Anyone who has it can read the event's name and
   note and add an answer. Only you can read the answers. The part of the link after `#` is
   never sent to GitHub or to any other site.
 - **Free-plan limits.** Firestore's free plan allows 50,000 reads and 20,000 writes a day,
   which is far more than a group of friends needs. If the quota is ever used up the site stops
-  saving until the next day; it cannot run up a bill.
+  working until the next day (midnight Pacific time); it cannot run up a bill. Firebase also
+  allows about 100 new sign-ups an hour from one network address, guests included, so a
+  lecture hall answering all at once from one Wi-Fi network may be asked to wait a few minutes.
+  A results page shows at most 500 answers.
+- **Browsers.** Current Chrome, Edge, Firefox and Safari, on computers and phones. Anything from
+  roughly 2023 onwards works; older browsers get a message asking for an update.
 - **Every site under one `github.io` name shares browser storage.** If you publish other Pages
   sites from the same GitHub account that run code you do not trust, give this one its own
   domain.
@@ -140,19 +187,26 @@ js/ui/                the timetable grid, the calendar, small DOM helpers
 js/views/             one file per page
 js/vendor/firebase.js the Firebase SDK, bundled from npm (see below)
 firestore.rules       who may read and write what
+scripts/              assembling the published folder, and bundling the SDK
 tests/                unit, security-rule and browser tests
+.github/workflows/    runs the tests and publishes the site
 ```
 
 ### Security, in short
 
 - Passwords are handled entirely by Firebase Authentication; this site never stores or sees a
   password hash. New passwords must be at least 15 characters. Sign-in and password-reset
-  messages never reveal whether an email has an account. Changing a password or deleting an
+  messages never reveal whether an email has an account. (Sign-up cannot hide it: Firebase
+  itself refuses a second account for the same address.) Changing a password or deleting an
   account asks for the current password again.
 - An account can create events only after its email address is confirmed, and that is checked
   by the database rules, not just by the page.
 - All access control is in [`firestore.rules`](firestore.rules), enforced by Firestore itself,
   and covered by tests in `tests/rules/`. Every field of every write is checked there.
+- Deleting an event leaves a marker under its id, so nobody can later create an event with the
+  same id and take over an old invite link.
+- One person can save an answer at most every five seconds (the page waits by itself), which
+  limits how fast a single visitor can use up the daily quota.
 - The page runs only its own scripts (`script-src 'self'`), loads nothing from third parties,
   may talk only to the Firebase sign-in and database hosts, never submits a form to a server,
   and enforces Trusted Types so no string can be turned into markup. The Firebase SDK is served
@@ -172,15 +226,19 @@ a daylight-saving change) says so.
 
 ## Working on it
 
-Needs Node 22 or newer, and Java 21 or newer for the Firestore emulator.
+Needs Node 24 and Java 21 or newer (the Firestore emulator is a Java program).
 
 ```sh
 npm install
-npm run test:unit     # logic: time zones, slots, CSV, validation
+npx playwright install chromium firefox webkit   # once: the browsers the tests drive
+npm run test:unit     # logic: time zones, slots, CSV, validation, and checks on the site's files
 npm run test:rules    # security rules, against the Firestore emulator
-npm run test:e2e      # the real site in Chromium, against the Auth and Firestore emulators
+npm run test:e2e      # the real site in Chromium, Firefox and WebKit, against the emulators
 npm test              # all three
 ```
+
+The browser tests include automated accessibility checks (axe-core) of every page in the light
+and dark colour schemes, and touch-screen tests on phone profiles.
 
 To click around locally without a Firebase project, start the emulators and the test server in
 two terminals, then open <http://127.0.0.1:4173/calendar-applet/>:
