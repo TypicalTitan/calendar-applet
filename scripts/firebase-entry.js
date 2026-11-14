@@ -1,0 +1,42 @@
+// The only Firebase functions the site uses. `npm run vendor` bundles exactly these into
+// js/vendor/firebase.js so the site serves the SDK itself instead of loading it from a CDN.
+export { initializeApp } from 'firebase/app';
+export {
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+  connectAuthEmulator,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signInAnonymously,
+  signOut,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  updateProfile,
+  updatePassword,
+  reauthenticateWithCredential,
+  linkWithCredential,
+  EmailAuthProvider,
+  deleteUser,
+  validatePassword,
+  reload,
+} from 'firebase/auth';
+export {
+  getFirestore,
+  connectFirestoreEmulator,
+  doc,
+  collection,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  limit,
+  serverTimestamp,
+  writeBatch,
+  Timestamp,
+} from 'firebase/firestore/lite';

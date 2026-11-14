@@ -1,0 +1,145 @@
+rules_version = '2';
+
+// Who may do what
+// ---------------
+// events/{eventId}
+//   read one       anyone who knows the id (the id is the invite link's secret)
+//   list           only your own events
+//   create         a signed-in account holder, as themselves, with every field checked
+//   update         the organizer; only the name, note and open/closed flag can change
+//   delete         the organizer
+//
+// events/{eventId}/responses/{uid}     one answer per person; the document id is their user id
+//   read one       that person, or the organizer
+//   list           the organizer
+//   create/update  that person, while the event is open, with every field checked
+//   delete         that person, or the organizer
+//
+// Everything else is refused.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Invitees are signed in "anonymously" so that each browser has an identity of its own.
+    // Only people with a real account may create events.
+    function hasAccount() {
+      return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    function eventPath(eventId) {
+      return /databases/$(database)/documents/events/$(eventId);
+    }
+
+    function ownsEvent(eventId) {
+      return signedIn() && get(eventPath(eventId)).data.ownerUid == request.auth.uid;
+    }
+
+    function eventFields() {
+      return ['ownerUid', 'title', 'description', 'timezone', 'dates', 'startMinute', 'endMinute',
+              'slotMinutes', 'dayStarts', 'slotCount', 'open', 'createdAt', 'updatedAt'];
+    }
+
+    // `dates` is a list of 1-31 "YYYY-MM-DD" strings. Rules cannot loop, so the list is joined
+    // and checked as one string; the length check stops one entry from hiding several days.
+    function validDates(dates) {
+      return dates is list
+        && dates.size() >= 1
+        && dates.size() <= 31
+        && dates.join(',').size() == dates.size() * 11 - 1
+        && dates.join(',').matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])(,[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]))*$');
+    }
+
+    // `dayStarts` is the instant each day's window opens, as whole minutes since 1970: one
+    // eight-digit number per day (eight digits covers the years 1989 to 2160).
+    function validDayStarts(starts, days) {
+      return starts is list
+        && starts.size() == days
+        && starts.join(',').size() == days * 9 - 1
+        && starts.join(',').matches('^[0-9]{8}(,[0-9]{8})*$');
+    }
+
+    function validEvent(e) {
+      return e.keys().hasOnly(eventFields())
+        && e.keys().hasAll(eventFields())
+        && e.ownerUid is string
+        && e.title is string && e.title.size() >= 1 && e.title.size() <= 100
+        && e.description is string && e.description.size() <= 500
+        && e.timezone is string && e.timezone.size() <= 64
+        && e.timezone.matches('^[A-Za-z][A-Za-z0-9_+/-]*$')
+        && validDates(e.dates)
+        && e.slotMinutes is int && e.slotMinutes in [15, 30, 60]
+        && e.startMinute is int && e.startMinute >= 0 && e.startMinute < 1440 && e.startMinute % 15 == 0
+        && e.endMinute is int && e.endMinute > e.startMinute && e.endMinute - e.startMinute <= 1440
+        && (e.endMinute - e.startMinute) % e.slotMinutes == 0
+        && validDayStarts(e.dayStarts, e.dates.size())
+        && e.slotCount is int
+        && e.slotCount == e.dates.size() * ((e.endMinute - e.startMinute) / e.slotMinutes)
+        && e.open is bool
+        && e.createdAt is timestamp
+        && e.updatedAt is timestamp;
+    }
+
+    match /events/{eventId} {
+      allow get: if true;
+
+      allow list: if signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.query.limit <= 100;
+
+      allow create: if hasAccount()
+        && request.resource.data.ownerUid == request.auth.uid
+        && validEvent(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && validEvent(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['title', 'description', 'open', 'updatedAt'])
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+
+      match /responses/{uid} {
+        function isSelf() {
+          return signedIn() && request.auth.uid == uid;
+        }
+
+        function answerFields() {
+          return ['name', 'slots', 'createdAt', 'updatedAt'];
+        }
+
+        // An answer is one "0" or "1" per slot of the event, and is only accepted while the
+        // organizer keeps the event open.
+        function validAnswer(a) {
+          let event = get(eventPath(eventId)).data;
+          return event.open == true
+            && a.keys().hasOnly(answerFields())
+            && a.keys().hasAll(answerFields())
+            && a.name is string && a.name.size() >= 1 && a.name.size() <= 60
+            && a.slots is string && a.slots.size() == event.slotCount && a.slots.matches('^[01]+$')
+            && a.createdAt is timestamp
+            && a.updatedAt == request.time;
+        }
+
+        allow get: if isSelf() || ownsEvent(eventId);
+        allow list: if ownsEvent(eventId);
+
+        allow create: if isSelf()
+          && validAnswer(request.resource.data)
+          && request.resource.data.createdAt == request.time;
+
+        allow update: if isSelf()
+          && validAnswer(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt;
+
+        allow delete: if isSelf() || ownsEvent(eventId);
+      }
+    }
+  }
+}

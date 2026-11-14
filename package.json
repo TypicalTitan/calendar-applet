@@ -1,0 +1,23 @@
+{
+  "name": "calendar-applet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Find a time everyone is free. Static site for GitHub Pages backed by Firebase.",
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:unit && npm run test:rules",
+    "test:unit": "node --test \"tests/unit/**/*.test.js\"",
+    "vendor": "esbuild scripts/firebase-entry.js --bundle --format=esm --target=es2022 --minify --legal-comments=inline --outfile=js/vendor/firebase.js",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-calendar-applet \"node --test tests/rules/*.test.js\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "6.0.0",
+    "@playwright/test": "1.63.0",
+    "esbuild": "0.28.2",
+    "firebase": "13.3.0",
+    "firebase-tools": "15.36.0"
+  }
+}
