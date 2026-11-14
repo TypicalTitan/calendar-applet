@@ -34,6 +34,17 @@ export function computeDayStarts(event) {
   return event.dates.map((date) => wallToUtc(date, event.startMinute, event.timezone).utc / MINUTE);
 }
 
+/** The start instants as they are stored: eight-digit numbers joined with commas. */
+export function encodeDayStarts(starts) {
+  return starts.join(',');
+}
+
+/** The stored string back to numbers, or null if it is not in exactly that form. */
+export function decodeDayStarts(text) {
+  if (typeof text !== 'string' || !/^\d{8}(,\d{8})*$/.test(text)) return null;
+  return text.split(',').map(Number);
+}
+
 /**
  * Checks start instants read from the database: one whole number per day, in order, each within
  * a time zone's reach of the day it belongs to. Anything else is treated as a damaged event.

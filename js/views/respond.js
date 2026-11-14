@@ -3,7 +3,7 @@
 import { h, replace, field, toast, confirmDialog } from '../ui/dom.js';
 import { createPaintGrid } from '../ui/grid.js';
 import { zoneChooser } from '../ui/zone.js';
-import { getEvent, getMyAnswer, saveMyAnswer, deleteMyAnswer, getUser, getAccount, signOut } from '../backend.js';
+import { getEvent, getMyAnswer, saveMyAnswer, deleteMyAnswer, getUser, getAccount, signOut, SAVE_PAUSE } from '../backend.js';
 import { buildSlots, slotWall } from '../core/slots.js';
 import { cleanName, fromAnswer, toAnswer, NAME_MAX } from '../core/availability.js';
 import { duration, eventSummary, shortDate, timeLabel } from '../ui/format.js';
@@ -46,6 +46,13 @@ export function respondView({ params }) {
     let saved = existing;                         // what is stored, or null
     let bits = fromAnswer(existing?.slots, slots.count);
     let dirty = false;
+    // The database refuses a second save within a few seconds of the last one. Rather than show
+    // an error, wait out whatever is left of that pause before sending.
+    let lastWriteAt = existing?.updatedAt || 0;
+    const pause = () => {
+      const left = SAVE_PAUSE - (Date.now() - lastWriteAt);
+      return left > 0 && left <= SAVE_PAUSE ? new Promise((resolve) => { setTimeout(resolve, left); }) : null;
+    };
 
     const name = field({
       label: 'Your name',
@@ -105,7 +112,9 @@ export function respondView({ params }) {
       status.textContent = 'Saving…';
       try {
         const slotsText = toAnswer(bits);
+        await pause();
         await saveMyAnswer(event, { name: cleaned, slots: slotsText });
+        lastWriteAt = Date.now();
         saved = { name: cleaned, slots: slotsText };
         dirty = false;
         name.input.value = cleaned;
@@ -130,7 +139,9 @@ export function respondView({ params }) {
       });
       if (!ok) return;
       try {
+        await pause();
         await deleteMyAnswer(event);
+        lastWriteAt = 0;
         saved = null;
         dirty = false;
         remove.hidden = true;
@@ -155,6 +166,7 @@ export function respondView({ params }) {
         await signOut();
         saved = null;
         dirty = false;
+        lastWriteAt = 0;
         bits = new Uint8Array(slots.count);
         grid.setValue(bits);
         name.input.value = '';
@@ -206,7 +218,8 @@ export function respondView({ params }) {
           h('div', { class: 'tt-foot' }, tally, clear)),
         formError,
         h('div', { class: 'row' }, save, remove),
-        status);
+        status,
+        h('p', { class: 'muted small' }, 'Your name and times are stored for this event’s organizer and shown to nobody else. You can change or remove them from this browser.'));
       replace(holder, h('div', { class: 'stack' }, head, form));
     }
 

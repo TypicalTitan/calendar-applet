@@ -12,10 +12,10 @@ import {
   signOut as fbSignOut, sendEmailVerification, sendPasswordResetEmail, updateProfile, updatePassword,
   reauthenticateWithCredential, linkWithCredential, EmailAuthProvider, deleteUser, validatePassword, reload,
   getFirestore, connectFirestoreEmulator, doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
-  query, where, limit, serverTimestamp, writeBatch,
+  query, where, orderBy, startAfter, documentId, limit, serverTimestamp, writeBatch, Timestamp,
 } from './vendor/firebase.js';
 import { parseEvent } from './core/validate.js';
-import { computeDayStarts } from './core/slots.js';
+import { computeDayStarts, encodeDayStarts, decodeDayStarts } from './core/slots.js';
 import { cleanName, isAnswer, emptyAnswer } from './core/availability.js';
 
 let auth = null;
@@ -195,7 +195,10 @@ export function signUp({ name, email, password }) {
       if (auth.currentUser?.isAnonymous) {
         // This browser already answered an invite as a guest. Turn that guest into the new
         // account so the answers stay theirs.
-        ({ user } = await linkWithCredential(auth.currentUser, EmailAuthProvider.credential(email, password)));
+        await linkWithCredential(auth.currentUser, EmailAuthProvider.credential(email, password));
+        // Sign in afresh so the session is a password sign-in in its own right, which is what
+        // the database rules look for, rather than a guest session with a password attached.
+        ({ user } = await signInWithEmailAndPassword(auth, email, password));
       } else {
         ({ user } = await createUserWithEmailAndPassword(auth, email, password));
       }
@@ -274,7 +277,8 @@ export function changeName(name) {
 export function deleteAccount(password) {
   return attempt(async () => {
     const user = await confirmPassword(password);
-    for (const event of await listMyEvents()) await deleteEvent(event.id);
+    // By id, not through the parsed list: an event this page cannot display still has to go.
+    for (const snapshot of await myEventSnapshots()) await deleteEvent(snapshot.id);
     await deleteUser(user);
   });
 }
@@ -282,12 +286,35 @@ export function deleteAccount(password) {
 // ------------------------------------------------------------------ events
 
 const ID = /^[A-Za-z0-9]{20}$/; // the shape of the ids Firestore generates, and the only one the rules accept
+const PAGE = 100;      // the most events the rules hand over in one query
+const MOST_ANSWERS = 500; // the most answers the rules hand over in one query
+const SAVE_PAUSE_MS = 5500; // the rules refuse a second save within five seconds; allow for clock drift
 const millis = (stamp) => (stamp && typeof stamp.toMillis === 'function' ? stamp.toMillis() : null);
+const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 function readEvent(snapshot) {
   if (!snapshot.exists()) return null;
   const data = snapshot.data();
-  return parseEvent(snapshot.id, { ...data, createdAt: millis(data.createdAt), updatedAt: millis(data.updatedAt) });
+  return parseEvent(snapshot.id, {
+    ...data,
+    dayStarts: decodeDayStarts(data.dayStarts),
+    createdAt: millis(data.createdAt),
+    updatedAt: millis(data.updatedAt),
+  });
+}
+
+/** Every event document the signed-in organizer owns, fetched a page at a time. */
+async function myEventSnapshots() {
+  const found = [];
+  let last = null;
+  for (;;) {
+    const parts = [where('ownerUid', '==', auth.currentUser.uid), orderBy(documentId())];
+    if (last) parts.push(startAfter(last));
+    const page = await getDocs(query(collection(db, 'events'), ...parts, limit(PAGE)));
+    found.push(...page.docs);
+    if (page.docs.length < PAGE) return found;
+    last = page.docs[page.docs.length - 1].id;
+  }
 }
 
 /** Saves a new event (already checked by validateEvent) and returns its id. */
@@ -303,7 +330,7 @@ export function createEvent(value) {
       startMinute: value.startMinute,
       endMinute: value.endMinute,
       slotMinutes: value.slotMinutes,
-      dayStarts: computeDayStarts(value),
+      dayStarts: encodeDayStarts(computeDayStarts(value)),
       slotCount: value.slotCount,
       open: true,
       createdAt: serverTimestamp(),
@@ -325,9 +352,8 @@ export function getEvent(id) {
 
 export function listMyEvents() {
   return attempt(async () => {
-    const mine = query(collection(db, 'events'), where('ownerUid', '==', auth.currentUser.uid), limit(100));
-    const snapshot = await getDocs(mine);
-    return snapshot.docs.map(readEvent).filter(Boolean).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const snapshots = await myEventSnapshots();
+    return snapshots.map(readEvent).filter(Boolean).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   });
 }
 
@@ -340,16 +366,36 @@ export function updateEvent(id, changes) {
   });
 }
 
-/** Deletes an event and every answer to it. */
+/**
+ * Deletes an event and every answer to it.
+ *
+ * The event is closed first so no new answer can slip in, the answers go next (the organizer
+ * needs the event to exist to be allowed to delete them), and the event goes last, together
+ * with a tombstone that stops its id, and so its invite link, from ever being used again.
+ */
 export function deleteEvent(id) {
   return attempt(async () => {
-    const answers = await getDocs(collection(db, 'events', id, 'responses'));
-    for (let i = 0; i < answers.docs.length; i += 400) {
-      const batch = writeBatch(db);
-      for (const answer of answers.docs.slice(i, i + 400)) batch.delete(answer.ref);
-      await batch.commit();
+    const ref = doc(db, 'events', id);
+    const snapshot = await getDoc(ref);
+    if (!snapshot.exists()) return;
+    if (snapshot.data().open === true) {
+      try { await updateDoc(ref, { open: false, updatedAt: serverTimestamp() }); } catch { /* still delete it */ }
     }
-    await deleteDoc(doc(db, 'events', id));
+    for (;;) {
+      const answers = await getDocs(query(collection(db, 'events', id, 'responses'), limit(MOST_ANSWERS)));
+      // Small batches: each delete makes the rules look up the event, and a batch may only do
+      // a limited number of look-ups.
+      for (let i = 0; i < answers.docs.length; i += 20) {
+        const batch = writeBatch(db);
+        for (const answer of answers.docs.slice(i, i + 20)) batch.delete(answer.ref);
+        await batch.commit();
+      }
+      if (answers.docs.length < MOST_ANSWERS) break;
+    }
+    const last = writeBatch(db);
+    last.set(doc(db, 'tombstones', id), { at: serverTimestamp() });
+    last.delete(ref);
+    await last.commit();
   });
 }
 
@@ -366,13 +412,33 @@ function readAnswer(snapshot, slotCount) {
   };
 }
 
-/** Every answer to an event, oldest first. Only the organizer is allowed to ask. */
+const oldestFirst = (a, b) => (a.createdAt || 0) - (b.createdAt || 0);
+
+/**
+ * The answers to an event, oldest first (at most MOST_ANSWERS of them). Only the organizer is
+ * allowed to ask.
+ */
 export function listAnswers(event) {
   return attempt(async () => {
-    const snapshot = await getDocs(collection(db, 'events', event.id, 'responses'));
-    return snapshot.docs.map((d) => readAnswer(d, event.slotCount)).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const snapshot = await getDocs(query(collection(db, 'events', event.id, 'responses'), limit(MOST_ANSWERS)));
+    return snapshot.docs.map((d) => readAnswer(d, event.slotCount)).sort(oldestFirst);
   }, { denied: 'Only the organizer can see the answers.' });
 }
+
+/**
+ * Only the answers saved after `since` (milliseconds). Keeping a results page up to date this
+ * way costs one read when nothing has changed, instead of one per answer.
+ */
+export function listAnswersSince(event, since) {
+  return attempt(async () => {
+    const changed = query(collection(db, 'events', event.id, 'responses'),
+      where('updatedAt', '>', Timestamp.fromMillis(since)), limit(MOST_ANSWERS));
+    const snapshot = await getDocs(changed);
+    return snapshot.docs.map((d) => readAnswer(d, event.slotCount));
+  }, { denied: 'Only the organizer can see the answers.' });
+}
+
+export const ANSWER_LIMIT = MOST_ANSWERS;
 
 /** The answer saved from this browser, or null. */
 export function getMyAnswer(event) {
@@ -386,16 +452,39 @@ export function getMyAnswer(event) {
 /** Saves this person's answer, signing them in as a guest first if they are nobody yet. */
 export function saveMyAnswer(event, { name, slots }) {
   return attempt(async () => {
-    if (!auth.currentUser) await signInAnonymously(auth);
+    if (!auth.currentUser) {
+      try {
+        await signInAnonymously(auth);
+      } catch (error) {
+        // Firebase limits how many new people can appear from one network address in an hour.
+        if (error?.code === 'auth/too-many-requests' || error?.code === 'auth/quota-exceeded') {
+          throw new FriendlyError('A lot of people on your network are answering right now. Wait a few minutes and save again.', error.code);
+        }
+        throw error;
+      }
+    }
     const ref = doc(db, 'events', event.id, 'responses', auth.currentUser.uid);
-    const existing = await getDoc(ref);
-    if (existing.exists()) {
-      await updateDoc(ref, { name, slots, updatedAt: serverTimestamp() });
-    } else {
-      await setDoc(ref, { name, slots, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    const write = async () => {
+      const existing = await getDoc(ref);
+      if (existing.exists()) await updateDoc(ref, { name, slots, updatedAt: serverTimestamp() });
+      else await setDoc(ref, { name, slots, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    };
+    try {
+      await write();
+    } catch (error) {
+      if (error?.code !== 'permission-denied') throw error;
+      // Refused: either the organizer has closed the event, or this answer was saved a moment
+      // ago (from another tab, say) and the pause between saves has not passed yet.
+      const now = await getDoc(doc(db, 'events', event.id));
+      if (!now.exists() || now.data().open !== true) throw error;
+      await sleep(SAVE_PAUSE_MS);
+      await write();
     }
   }, { denied: 'Your times couldn’t be saved. The organizer may have just closed this event.' });
 }
+
+/** How long a page should wait after one save before sending the next. */
+export const SAVE_PAUSE = SAVE_PAUSE_MS;
 
 export function deleteMyAnswer(event) {
   return attempt(async () => {

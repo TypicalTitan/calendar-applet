@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { slotsPerDay, slotCount, computeDayStarts, plausibleDayStarts, buildSlots, describeGrid, slotWall, sameClock } from '../../js/core/slots.js';
+import {
+  slotsPerDay, slotCount, computeDayStarts, plausibleDayStarts, encodeDayStarts, decodeDayStarts, buildSlots, describeGrid, slotWall, sameClock,
+} from '../../js/core/slots.js';
 
 const iso = (ms) => new Date(ms).toISOString();
 
@@ -146,4 +148,17 @@ test('slotWall gives the exact local start and end of one slot', () => {
   assert.deepEqual(slotWall(weekend, s, 0, 'America/New_York'), { date: '2026-11-21', weekday: 6, startMinute: 540, endMinute: 570 });
   assert.deepEqual(slotWall(weekend, s, 2, 'Asia/Tokyo'), { date: '2026-11-22', weekday: 0, startMinute: 0, endMinute: 30 });
   assert.deepEqual(slotWall(weekend, s, 1, 'Asia/Tokyo'), { date: '2026-11-21', weekday: 6, startMinute: 1410, endMinute: 1440 });
+});
+
+test('encodeDayStarts and decodeDayStarts turn the start instants into the stored string and back', () => {
+  const startsList = computeDayStarts(weekend);
+  const text = encodeDayStarts(startsList);
+  assert.equal(text, '29921160,29922600,29924040');
+  assert.deepEqual(decodeDayStarts(text), startsList);
+});
+
+test('decodeDayStarts gives null for anything that is not eight-digit numbers joined by commas', () => {
+  for (const bad of ['', '1,2,3', '29921160,', ',29921160', '29921160 29922600', '29921160.5', '-29921160', 'soon', null, undefined, 29921160, ['29921160']]) {
+    assert.equal(decodeDayStarts(bad), null, JSON.stringify(bad));
+  }
 });

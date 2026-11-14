@@ -4,7 +4,7 @@
 import { h, replace, icon, toast, confirmDialog, copyText, downloadFile, field, uid } from '../ui/dom.js';
 import { createHeatGrid, heatLegend } from '../ui/grid.js';
 import { zoneChooser } from '../ui/zone.js';
-import { getEvent, listAnswers, updateEvent, deleteEvent, deleteAnswer, getAccount } from '../backend.js';
+import { getEvent, listAnswers, listAnswersSince, updateEvent, deleteEvent, deleteAnswer, getAccount, ANSWER_LIMIT } from '../backend.js';
 import { buildSlots, slotWall } from '../core/slots.js';
 import { countAvailable, fromAnswer, bestWindows } from '../core/availability.js';
 import { gridRows, rangeRows, toCsv, exportFileName } from '../core/csv.js';
@@ -56,6 +56,7 @@ export function resultsView({ params, navigate, appName }) {
     let pinnedBlock = -1;     // which "best time" is outlined on the grid
     let showTable = false;
     let lastLoaded = Date.now();
+    let loading = false;
 
     // ---- invite link
     const linkId = uid('link');
@@ -92,7 +93,7 @@ export function resultsView({ params, navigate, appName }) {
       drawGridArea();
     });
     const refresh = h('button', { type: 'button', class: 'btn btn-quiet btn-small' }, icon('refresh'), 'Refresh');
-    refresh.addEventListener('click', () => reload(true));
+    refresh.addEventListener('click', () => reload({ announce: true, full: true }));
 
     // ---- side panels
     const peopleTitle = h('h2', { id: uid('people') });
@@ -227,7 +228,10 @@ export function resultsView({ params, navigate, appName }) {
         busy.length ? h('p', { class: 'names' }, h('b', null, 'Not free: '), listNames(busy)) : null);
     }
 
+    const capNote = h('p', { class: 'banner', hidden: true }, `Showing ${ANSWER_LIMIT} answers, the most this page loads at once. There may be more.`);
+
     function drawPeople() {
+      capNote.hidden = answers.length < ANSWER_LIMIT;
       peopleTitle.textContent = answers.length ? plural(answers.length, 'answer', 'answers') : 'No answers yet';
       if (answers.length === 0) {
         replace(peopleList, h('li', null, h('p', { class: 'muted' }, 'Send the invite link to the people you want to hear from. Their names appear here as they answer.')));
@@ -334,22 +338,45 @@ export function resultsView({ params, navigate, appName }) {
       drawDetail(grid.selected);
     }
 
-    async function reload(announce) {
+    // A full reload fetches every answer. A light one asks only for answers saved since the
+    // newest one already here, which costs a single read when nothing has changed; it cannot
+    // notice an answer that was removed, so every tenth automatic refresh is a full one.
+    async function reload({ announce = false, full = false } = {}) {
+      if (loading) return;
+      loading = true;
       refresh.disabled = true;
       try {
-        answers = await listAnswers(event);
-        lastLoaded = Date.now();
-        drawAll();
+        if (full) {
+          answers = await listAnswers(event);
+          lastLoaded = Date.now();
+          drawAll();
+        } else {
+          const newest = answers.reduce((max, a) => Math.max(max, a.updatedAt || 0), 0);
+          const changed = await listAnswersSince(event, newest);
+          lastLoaded = Date.now();
+          if (changed.length) {
+            const byId = new Map(answers.map((a) => [a.id, a]));
+            for (const answer of changed) byId.set(answer.id, answer);
+            answers = [...byId.values()].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+            drawAll();
+          }
+        }
         if (announce) toast('Up to date');
       } catch (error) {
         if (announce) toast(error.message);
       }
       refresh.disabled = false;
+      loading = false;
     }
 
     // Keep the page fresh while it is on screen, without a permanent connection.
-    const timer = setInterval(() => { if (document.visibilityState === 'visible') reload(false); }, REFRESH_MS);
-    const onVisible = () => { if (document.visibilityState === 'visible' && Date.now() - lastLoaded > 15_000) reload(false); };
+    let ticks = 0;
+    const timer = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      ticks += 1;
+      reload({ full: ticks % 10 === 0 });
+    }, REFRESH_MS);
+    const onVisible = () => { if (document.visibilityState === 'visible' && Date.now() - lastLoaded > 15_000) reload(); };
     document.addEventListener('visibilitychange', onVisible);
 
     const at = slots.utc[0];
@@ -371,7 +398,7 @@ export function resultsView({ params, navigate, appName }) {
           h('section', { class: 'sheet detail', 'aria-label': 'Selected time', 'aria-live': 'polite' }, detail),
           h('section', { class: 'sheet', 'aria-label': 'Best times' },
             h('h2', null, 'Best times'), lengthField.el, bestList)),
-        h('section', { class: 'sheet results-people', 'aria-labelledby': peopleTitle.id }, peopleTitle, peopleList)),
+        h('section', { class: 'sheet results-people stack', 'aria-labelledby': peopleTitle.id }, peopleTitle, capNote, peopleList)),
       h('section', { class: 'sheet stack no-print', 'aria-label': 'Export' },
         h('h2', null, 'Export'),
         h('p', { class: 'muted' }, 'Download every answer as a spreadsheet file. The grid has a row for each time slot and a column for each person; the other lists each person’s free stretches.'),

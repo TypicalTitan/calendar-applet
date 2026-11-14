@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { signUp, createEvent, answerAsGuest, nextMonthDays, freshEmail, openConfirmationLink } from './helpers.js';
+import {
+  signUp, createEvent, answerAsGuest, nextMonthDays, freshEmail, openConfirmationLink, userId, seedEvents, countEventsOwnedBy,
+} from './helpers.js';
 
 const NY = { locale: 'en-US', timezoneId: 'America/New_York' };
 
@@ -282,4 +284,61 @@ test('names and titles that look like HTML are shown as plain text', async ({ pa
   await expect(page.locator('main img')).toHaveCount(0);
   await expect(page.locator('main b', { hasText: 'Mallory' })).toHaveCount(0);
   expect(dialogs).toBe(0);
+});
+
+test('saving again straight away works: the page waits out the pause between saves', async ({ page, browser }) => {
+  await signUp(page);
+  const { days, link } = await createEvent(page);
+  const { context, page: guest } = await answerAsGuest(browser, link, 'Ana', [`${days[0].cell}, 9:00 AM`]);
+  await guest.getByRole('gridcell', { name: `${days[0].cell}, 10:00 AM`, exact: true }).click();
+  await guest.getByRole('button', { name: 'Save my times' }).click();
+  await expect(guest.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible({ timeout: 15_000 });
+  await expect(guest.getByRole('alert')).toHaveCount(0);
+  await context.close();
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await expect(page.getByRole('gridcell', { name: `${days[0].cell}, 10:00 AM, 1 of 1 free` })).toBeVisible();
+});
+
+test('the results page picks up new and changed answers by itself', async ({ page, browser }) => {
+  await signUp(page);
+  const { days, link } = await createEvent(page);
+  // Take control of the page's clock, then load the page again so its refresh timer runs on it.
+  await page.clock.install();
+  await page.reload();
+  await expect(page.getByText('No answers yet')).toBeVisible();
+
+  const { context, page: guest } = await answerAsGuest(browser, link, 'Ana', [`${days[0].cell}, 9:00 AM`]);
+  await page.clock.fastForward(61_000);
+  await expect(page.getByText('1 answer', { exact: true })).toBeVisible();
+  await expect(page.getByRole('gridcell', { name: `${days[0].cell}, 9:00 AM, 1 of 1 free` })).toBeVisible();
+
+  await guest.getByRole('gridcell', { name: `${days[0].cell}, 9:00 AM`, exact: true }).click();
+  await guest.getByRole('gridcell', { name: `${days[1].cell}, 3:00 PM`, exact: true }).click();
+  await guest.getByRole('button', { name: 'Save my times' }).click();
+  await expect(guest.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible({ timeout: 15_000 });
+  await (await answerAsGuest(browser, link, 'Ben', [`${days[1].cell}, 3:00 PM`])).context.close();
+  await context.close();
+
+  await page.clock.fastForward(61_000);
+  await expect(page.getByText('2 answers')).toBeVisible();
+  await expect(page.getByRole('gridcell', { name: `${days[0].cell}, 9:00 AM, 0 of 2 free` })).toBeVisible();
+  await expect(page.getByRole('gridcell', { name: `${days[1].cell}, 3:00 PM, 2 of 2 free` })).toBeVisible();
+});
+
+test('an organizer with more than a hundred events sees them all, and deleting the account removes them all', async ({ page }) => {
+  test.slow();
+  const account = await signUp(page);
+  const uid = await userId(account);
+  await seedEvents(uid, 104);
+  await createEvent(page, { title: 'The one made by hand' });
+  await page.goto('#/events');
+  await expect(page.locator('.event-list li')).toHaveCount(105);
+  expect(await countEventsOwnedBy(uid)).toBe(105);
+
+  await page.goto('#/account');
+  await page.getByRole('button', { name: 'Delete my account' }).click();
+  await page.getByRole('dialog').getByLabel('Your password').fill(account.password);
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete account' }).click();
+  await expect(page.getByText('Account deleted')).toBeVisible({ timeout: 60_000 });
+  expect(await countEventsOwnedBy(uid)).toBe(0);
 });

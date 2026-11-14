@@ -7,13 +7,18 @@ rules_version = '2';
 //   list           only your own events
 //   create         an account holder with a confirmed email, as themselves, every field checked
 //   update         the organizer; only the name, note and open/closed flag can change
-//   delete         the organizer
+//   delete         the organizer, and only together with a tombstone (below)
 //
 // events/{eventId}/responses/{uid}     one answer per person; the document id is their user id
 //   read one       that person, or the organizer
-//   list           the organizer
-//   create/update  that person, while the event is open, with every field checked
+//   list           the organizer, at most 500 at a time
+//   create/update  that person, while the event is open, with every field checked, and not
+//                  more often than once every five seconds
 //   delete         that person, or the organizer
+//
+// tombstones/{eventId}                 marks the id of a deleted event as used up for ever
+//   create         the organizer of that event
+//   nothing else   never read, changed or removed
 //
 // Everything else is refused.
 
@@ -45,23 +50,32 @@ service cloud.firestore {
               'slotMinutes', 'dayStarts', 'slotCount', 'open', 'createdAt', 'updatedAt'];
     }
 
-    // `dates` is a list of 1-31 "YYYY-MM-DD" strings. Rules cannot loop, so the list is joined
-    // and checked as one string; the length check stops one entry from hiding several days.
+    // `dates` is a list of 1-31 different "YYYY-MM-DD" strings. Rules cannot loop, so the list is
+    // joined and checked as one string. Splitting it again must give back the same list, which
+    // stops one entry from hiding several days or being something other than text.
     function validDates(dates) {
       return dates is list
         && dates.size() >= 1
         && dates.size() <= 31
-        && dates.join(',').size() == dates.size() * 11 - 1
-        && dates.join(',').matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])(,[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]))*$');
+        && dates.join(',').matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])(,[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]))*$')
+        && dates.join(',').split(',') == dates
+        && dates.toSet().size() == dates.size();
     }
 
     // `dayStarts` is the instant each day's window opens, as whole minutes since 1970: one
-    // eight-digit number per day (eight digits covers the years 1989 to 2160).
+    // eight-digit number per day (eight digits covers the years 1989 to 2160), joined with commas
+    // into a single string so that every part of it can be checked here.
     function validDayStarts(starts, days) {
-      return starts is list
-        && starts.size() == days
-        && starts.join(',').size() == days * 9 - 1
-        && starts.join(',').matches('^[0-9]{8}(,[0-9]{8})*$');
+      return starts is string
+        && starts.size() == days * 9 - 1
+        && starts.matches('^[0-9]{8}(,[0-9]{8})*$');
+    }
+
+    // Deleting an event leaves a tombstone under the same id. While it exists the id cannot be
+    // used for a new event, so an invite link can never come to point at somebody else's event
+    // and answers left over from the old one can never fall into new hands.
+    function tombstonePath(eventId) {
+      return /databases/$(database)/documents/tombstones/$(eventId);
     }
 
     function validEvent(e) {
@@ -95,6 +109,7 @@ service cloud.firestore {
       // The id is the secret in the invite link, so it must be a full-length random one.
       allow create: if hasConfirmedAccount()
         && eventId.matches('^[A-Za-z0-9]{20}$')
+        && !exists(tombstonePath(eventId))
         && request.resource.data.ownerUid == request.auth.uid
         && validEvent(request.resource.data)
         && request.resource.data.createdAt == request.time
@@ -107,7 +122,9 @@ service cloud.firestore {
              .hasOnly(['title', 'description', 'open', 'updatedAt'])
         && request.resource.data.updatedAt == request.time;
 
-      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow delete: if signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && existsAfter(tombstonePath(eventId));
 
       match /responses/{uid} {
         function isSelf() {
@@ -131,19 +148,34 @@ service cloud.firestore {
             && a.updatedAt == request.time;
         }
 
+        // Saving is free of charge for the person doing it but not for the site's owner, so
+        // one person may change (or delete and re-create) their answer at most every five
+        // seconds. The page waits out the rest of the five seconds by itself.
+        function notJustSaved() {
+          return request.time >= resource.data.updatedAt + duration.value(5, 's');
+        }
+
         allow get: if isSelf() || ownsEvent(eventId);
-        allow list: if ownsEvent(eventId);
+        allow list: if ownsEvent(eventId) && request.query.limit <= 500;
 
         allow create: if isSelf()
           && validAnswer(request.resource.data)
           && request.resource.data.createdAt == request.time;
 
         allow update: if isSelf()
+          && notJustSaved()
           && validAnswer(request.resource.data)
           && request.resource.data.createdAt == resource.data.createdAt;
 
-        allow delete: if isSelf() || ownsEvent(eventId);
+        allow delete: if (isSelf() && notJustSaved()) || ownsEvent(eventId);
       }
+    }
+
+    match /tombstones/{eventId} {
+      allow create: if ownsEvent(eventId)
+        && request.resource.data.keys().hasOnly(['at'])
+        && request.resource.data.keys().hasAll(['at'])
+        && request.resource.data.at == request.time;
     }
   }
 }

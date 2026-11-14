@@ -18,11 +18,14 @@ export default defineConfig({
     locale: 'en-US',
     timezoneId: 'America/New_York',
     trace: 'off',
-    permissions: ['clipboard-read', 'clipboard-write'],
   },
+  // Every flow runs in all three browser engines. The phone projects run the touch tests.
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] }, testIgnore: /phone\.spec\.js/ },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] }, testIgnore: /phone\.spec\.js/ },
+    { name: 'webkit', use: { ...devices['Desktop Safari'] }, testIgnore: /phone\.spec\.js/ },
     { name: 'phone', use: { ...devices['Pixel 7'] }, testMatch: /phone\.spec\.js/ },
+    { name: 'iphone', use: { ...devices['iPhone 14'] }, testMatch: /phone\.spec\.js/ },
   ],
   webServer: {
     command: 'node tests/e2e/server.mjs',

@@ -76,3 +76,59 @@ export async function answerAsGuest(browser, link, name, times) {
   await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible();
   return { context, page };
 }
+
+const authHost = () => process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099';
+const storeHost = () => process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
+const documents = () => `http://${storeHost()}/v1/projects/demo-calendar-applet/databases/(default)/documents`;
+const asOwner = { Authorization: 'Bearer owner', 'Content-Type': 'application/json' }; // the emulator's rule bypass
+
+/** The user id of an account, found by signing in to the Auth emulator directly. */
+export async function userId({ email, password }) {
+  const reply = await fetch(`http://${authHost()}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=demo-key`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, returnSecureToken: true }),
+  });
+  return (await reply.json()).localId;
+}
+
+/** Puts `count` ready-made events owned by `uid` straight into the database. */
+export async function seedEvents(uid, count) {
+  const days = nextMonthDays().map((d) => d.iso);
+  const starts = days.map((iso) => Date.parse(`${iso}T14:00:00Z`) / 60000).join(',');
+  const now = new Date().toISOString();
+  for (let n = 0; n < count; n++) {
+    const id = `seed${String(n).padStart(4, '0')}${'x'.repeat(12)}`;
+    const reply = await fetch(`${documents()}/events?documentId=${id}`, {
+      method: 'POST',
+      headers: asOwner,
+      body: JSON.stringify({ fields: {
+        ownerUid: { stringValue: uid },
+        title: { stringValue: `Seeded event ${n + 1}` },
+        description: { stringValue: '' },
+        timezone: { stringValue: 'America/New_York' },
+        dates: { arrayValue: { values: days.map((iso) => ({ stringValue: iso })) } },
+        startMinute: { integerValue: '540' },
+        endMinute: { integerValue: '1020' },
+        slotMinutes: { integerValue: '60' },
+        dayStarts: { stringValue: starts },
+        slotCount: { integerValue: '24' },
+        open: { booleanValue: true },
+        createdAt: { timestampValue: now },
+        updatedAt: { timestampValue: now },
+      } }),
+    });
+    if (!reply.ok) throw new Error(`Seeding failed: ${reply.status} ${await reply.text()}`);
+  }
+}
+
+/** How many events in the database belong to `uid`, read past the rules. */
+export async function countEventsOwnedBy(uid) {
+  const reply = await fetch(`${documents()}:runQuery`, {
+    method: 'POST',
+    headers: asOwner,
+    body: JSON.stringify({ structuredQuery: {
+      from: [{ collectionId: 'events' }],
+      where: { fieldFilter: { field: { fieldPath: 'ownerUid' }, op: 'EQUAL', value: { stringValue: uid } } },
+    } }),
+  });
+  return (await reply.json()).filter((row) => row.document).length;
+}

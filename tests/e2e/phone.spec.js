@@ -7,6 +7,10 @@ async function centre(locator) {
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
+// Raw touch events can only be injected into Chromium, so the press-and-hold tests run there;
+// taps and layout are checked in WebKit (the iPhone profile) as well.
+const rawTouch = ({ browserName }) => browserName !== 'chromium';
+
 /** Sends raw touch events, so the timing of a press-and-hold is under the test's control. */
 async function touch(page) {
   const client = await page.context().newCDPSession(page);
@@ -30,7 +34,8 @@ test('a tap marks one time and a second tap clears it', async ({ page }) => {
   await expect(cell).toHaveAttribute('aria-selected', 'false');
 });
 
-test('press and hold, then drag, marks a block of times', async ({ page }) => {
+test('press and hold, then drag, marks a block of times', async ({ page, browserName }) => {
+  test.skip(rawTouch({ browserName }), 'needs raw touch input, which only Chromium accepts');
   const { days, link } = await createEvent(page);
   await page.goto(link);
   const from = page.getByRole('gridcell', { name: `${days[0].cell}, 10:00 AM`, exact: true });
@@ -53,7 +58,8 @@ test('press and hold, then drag, marks a block of times', async ({ page }) => {
   await expect(page.getByText('6 hours marked')).toBeVisible();
 });
 
-test('a held drag that runs off the bottom of the screen keeps marking down to the last time in view', async ({ page }) => {
+test('a held drag that runs off the bottom of the screen keeps marking down to the last time in view', async ({ page, browserName }) => {
+  test.skip(rawTouch({ browserName }), 'needs raw touch input, which only Chromium accepts');
   const { days, link } = await createEvent(page, { from: '8:00 AM', to: '10:00 PM', slot: '30 minutes' });
   await page.goto(link);
   const from = page.getByRole('gridcell', { name: `${days[0].cell}, 8:00 AM`, exact: true });
@@ -69,7 +75,8 @@ test('a held drag that runs off the bottom of the screen keeps marking down to t
   expect(marked).toBeGreaterThan(3);
 });
 
-test('a quick swipe across the grid scrolls the page and marks nothing', async ({ page }) => {
+test('a quick swipe across the grid scrolls the page and marks nothing', async ({ page, browserName }) => {
+  test.skip(rawTouch({ browserName }), 'needs raw touch input, which only Chromium accepts');
   const { days, link } = await createEvent(page, { from: '8:00 AM', to: '10:00 PM', slot: '30 minutes' });
   await page.goto(link);
   const from = page.getByRole('gridcell', { name: `${days[0].cell}, 2:00 PM`, exact: true });

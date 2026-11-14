@@ -35,6 +35,8 @@ export {
   query,
   where,
   orderBy,
+  startAfter,
+  documentId,
   limit,
   serverTimestamp,
   writeBatch,

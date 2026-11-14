@@ -5,7 +5,7 @@ import {
   initializeTestEnvironment, assertFails, assertSucceeds,
 } from '@firebase/rules-unit-testing';
 import {
-  doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, limit,
+  doc, collection, collectionGroup, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, limit, writeBatch,
   serverTimestamp, Timestamp, deleteField, setLogLevel,
 } from 'firebase/firestore';
 
@@ -34,8 +34,9 @@ const guest = (uid) => env.authenticatedContext(uid, {
 }).firestore();
 const stranger = () => env.unauthenticatedContext().firestore();
 
-// Start instants (whole minutes since 1970) for `n` consecutive days from 21 Nov 2026, 9:00 New York.
-const starts = (n) => Array.from({ length: Array.isArray(n) ? n.length : n }, (_, i) => 29722440 + i * 1440);
+// Start instants (whole minutes since 1970) for `n` consecutive days from 21 Nov 2026, 9:00 in
+// New York, stored the way the site stores them: eight-digit numbers joined with commas.
+const starts = (n) => Array.from({ length: n }, (_, i) => 29921160 + i * 1440).join(',');
 
 // A valid event owned by `ownerUid`: three days, 9:00-17:00, half-hour slots => 48 slots.
 const eventData = (ownerUid, changes = {}) => ({
@@ -70,8 +71,10 @@ async function seed(path, data) {
 const pad = (id) => (id + '0'.repeat(20)).slice(0, 20);
 const seedEvent = (id = 'ev1', owner = 'olga', changes = {}) =>
   seed(`events/${pad(id)}`, eventData(owner, { createdAt: Timestamp.now(), updatedAt: Timestamp.now(), ...changes }));
+// A stored answer. By default it was saved a minute ago, so its owner may change it again.
+const aMinuteAgo = () => Timestamp.fromMillis(Date.now() - 60_000);
 const seedAnswer = (uid, eventId = 'ev1', changes = {}) =>
-  seed(`events/${pad(eventId)}/responses/${uid}`, answer({ createdAt: Timestamp.now(), updatedAt: Timestamp.now(), ...changes }));
+  seed(`events/${pad(eventId)}/responses/${uid}`, answer({ createdAt: aMinuteAgo(), updatedAt: aMinuteAgo(), ...changes }));
 
 // ---------------------------------------------------------------- events: reading
 
@@ -148,9 +151,12 @@ test('an organizer who created events keeps control of them whatever their sign-
   await seedEvent('ev1', 'nina');
   await seedAnswer('gus');
   const db = unconfirmed('nina');
-  await assertSucceeds(getDocs(collection(db, 'events/ev100000000000000000/responses')));
+  await assertSucceeds(getDocs(query(collection(db, 'events/ev100000000000000000/responses'), limit(500))));
   await assertSucceeds(updateDoc(doc(db, 'events/ev100000000000000000'), { open: false, updatedAt: serverTimestamp() }));
-  await assertSucceeds(deleteDoc(doc(db, 'events/ev100000000000000000')));
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'tombstones/ev100000000000000000'), { at: serverTimestamp() });
+  batch.delete(doc(db, 'events/ev100000000000000000'));
+  await assertSucceeds(batch.commit());
 });
 
 test('an organizer cannot create an event in someone else\'s name', async () => {
@@ -205,19 +211,30 @@ test('an event with bad days is refused', async () => {
   await assertFails(setDoc(doc(db, 'events/l0000000000000000000'), eventData('olga', { dates: { 0: '2026-11-21' }, slotCount: 16 })));
 });
 
-test('an event must store one start instant per day, as whole numbers', async () => {
+test('an event must store one start instant per day, as eight-digit numbers in one string', async () => {
   const db = account('olga');
-  await assertFails(setDoc(doc(db, 'events/a0000000000000000000'), eventData('olga', { dayStarts: starts(2) })));
-  await assertFails(setDoc(doc(db, 'events/b0000000000000000000'), eventData('olga', { dayStarts: starts(4) })));
-  await assertFails(setDoc(doc(db, 'events/c0000000000000000000'), eventData('olga', { dayStarts: [] })));
-  await assertFails(setDoc(doc(db, 'events/d0000000000000000000'), eventData('olga', { dayStarts: '29722440,29723880,29725320' })));
-  await assertFails(setDoc(doc(db, 'events/e0000000000000000000'), eventData('olga', { dayStarts: [29722440.5, 29723880, 29725320] })));
-  await assertFails(setDoc(doc(db, 'events/f0000000000000000000'), eventData('olga', { dayStarts: [-29722440, 29723880, 29725320] })));
-  await assertFails(setDoc(doc(db, 'events/g0000000000000000000'), eventData('olga', { dayStarts: [1, 2, 3] })));
-  await assertFails(setDoc(doc(db, 'events/h0000000000000000000'), eventData('olga', { dayStarts: ['soon', 'later', 'never'] })));
-  await assertFails(setDoc(doc(db, 'events/i0000000000000000000'), eventData('olga', { dayStarts: [29722440, 29723880, null] })));
-  await assertFails(setDoc(doc(db, 'events/j0000000000000000000'), eventData('olga', { dayStarts: ['29722440,29723880', 29725320] })));
-  await assertFails(setDoc(doc(db, 'events/k0000000000000000000'), eventData('olga', { dayStarts: [297224400000, 29723880, 29725320] })));
+  const bad = (id, dayStarts) => assertFails(setDoc(doc(db, `events/${pad(id)}`), eventData('olga', { dayStarts })));
+  await bad('a', starts(2));
+  await bad('b', starts(4));
+  await bad('c', '');
+  await bad('d', [29921160, 29922600, 29924040]);
+  await bad('e', ['29921160', '29922600', '29924040']);
+  await bad('f', '29921160.5,29922600,29924040');
+  await bad('g', '-29921160,29922600,29924040');
+  await bad('h', '1,2,3');
+  await bad('i', 'soon,later,never');
+  await bad('j', '29921160,29922600,29924040,');
+  await bad('k', '29921160 29922600 29924040');
+  await bad('l', '299211600000,29922600,29924040');
+  await bad('m', '\u0662\u0669\u0669\u0662\u0661\u0661\u0666\u0660,29922600,29924040'); // Arabic-Indic digits
+  await bad('n', 29921160);
+  await bad('o', null);
+});
+
+test('an event cannot list the same day twice or hide days inside one entry', async () => {
+  const db = account('olga');
+  await assertFails(setDoc(doc(db, `events/${pad('a')}`), eventData('olga', { dates: ['2026-11-21', '2026-11-21', '2026-11-22'] })));
+  await assertFails(setDoc(doc(db, `events/${pad('b')}`), eventData('olga', { dates: ['2026-11-21,2026-11-22', '2026-11-23'], dayStarts: starts(3) })));
 });
 
 test('an event with a bad daily window is refused', async () => {
@@ -281,7 +298,7 @@ test('the days, times, zone, owner and creation time of an event can never chang
   await assertFails(updateDoc(ref, { startMinute: 600, endMinute: 1080, ...stamp }));
   await assertFails(updateDoc(ref, { slotMinutes: 60, slotCount: 24, ...stamp }));
   await assertFails(updateDoc(ref, { timezone: 'Europe/Berlin', ...stamp }));
-  await assertFails(updateDoc(ref, { dayStarts: [29722500, 29723940, 29725380], ...stamp }));
+  await assertFails(updateDoc(ref, { dayStarts: '29921220,29922660,29924100', ...stamp }));
   await assertFails(updateDoc(ref, { ownerUid: 'pete', ...stamp }));
   await assertFails(updateDoc(ref, { createdAt: serverTimestamp(), ...stamp }));
 });
@@ -295,9 +312,62 @@ test('nobody but the organizer can change or delete an event', async () => {
   }
 });
 
-test('the organizer can delete their event', async () => {
+// Deleting an event leaves a marker ("tombstone") under the same id, written in the same batch,
+// so the id of a deleted event can never be used again.
+const tombstone = (db, id = 'ev1') => doc(db, `tombstones/${pad(id)}`);
+const stamp = () => ({ at: serverTimestamp() });
+
+test('the organizer can delete their event by leaving a tombstone in the same batch', async () => {
   await seedEvent();
-  await assertSucceeds(deleteDoc(doc(account('olga'), 'events/ev100000000000000000')));
+  const db = account('olga');
+  const batch = writeBatch(db);
+  batch.set(tombstone(db), stamp());
+  batch.delete(doc(db, `events/${pad('ev1')}`));
+  await assertSucceeds(batch.commit());
+});
+
+test('an event cannot be deleted without its tombstone', async () => {
+  await seedEvent();
+  await assertFails(deleteDoc(doc(account('olga'), `events/${pad('ev1')}`)));
+});
+
+test('once an event is deleted, nobody can create an event with the same id again', async () => {
+  await seed(`tombstones/${pad('ev1')}`, { at: Timestamp.now() });
+  await assertFails(setDoc(doc(account('mallory'), `events/${pad('ev1')}`), eventData('mallory')));
+  await assertFails(setDoc(doc(account('olga'), `events/${pad('ev1')}`), eventData('olga')));
+  await assertSucceeds(setDoc(doc(account('olga'), `events/${pad('ev2')}`), eventData('olga')));
+});
+
+test('only the organizer can leave a tombstone, only for their own event, and only in the exact form', async () => {
+  await seedEvent();
+  await assertFails(setDoc(tombstone(account('pete')), stamp()));
+  await assertFails(setDoc(tombstone(guest('gus')), stamp()));
+  await assertFails(setDoc(tombstone(stranger()), stamp()));
+  await assertFails(setDoc(tombstone(account('olga'), 'nope'), stamp()), 'no such event');
+  await assertFails(setDoc(tombstone(account('olga')), { at: Timestamp.fromDate(new Date('2020-01-01T00:00:00Z')) }));
+  await assertFails(setDoc(tombstone(account('olga')), { at: serverTimestamp(), note: 'x' }));
+  await assertFails(setDoc(tombstone(account('olga')), {}));
+});
+
+test('a tombstone can never be read, changed or removed', async () => {
+  await seedEvent();
+  await seed(`tombstones/${pad('gone')}`, { at: Timestamp.now() });
+  for (const db of [account('olga'), guest('gus'), stranger()]) {
+    await assertFails(getDoc(tombstone(db, 'gone')));
+    await assertFails(getDocs(collection(db, 'tombstones')));
+    await assertFails(updateDoc(tombstone(db, 'gone'), { at: serverTimestamp() }));
+    await assertFails(deleteDoc(tombstone(db, 'gone')));
+  }
+});
+
+test('a tombstone left without deleting the event does not stop the event working', async () => {
+  // An organizer could write only the tombstone. It harms nobody: the event carries on, and
+  // can still be deleted later.
+  await seedEvent();
+  const db = account('olga');
+  await assertSucceeds(setDoc(tombstone(db), stamp()));
+  await assertSucceeds(setDoc(doc(guest('gus'), `events/${pad('ev1')}/responses/gus`), answer()));
+  await assertSucceeds(deleteDoc(doc(db, `events/${pad('ev1')}`)));
 });
 
 // ---------------------------------------------------------------- answers: writing
@@ -379,6 +449,23 @@ test('a guest can change their own answer but not when it was first made', async
   await assertFails(updateDoc(doc(guest('hal'), 'events/ev100000000000000000/responses/gus'), { name: 'Hal', updatedAt: serverTimestamp() }));
 });
 
+test('an answer cannot be saved again within five seconds of the last save', async () => {
+  await seedEvent();
+  await seedAnswer('gus', 'ev1', { updatedAt: Timestamp.now() });
+  const ref = doc(guest('gus'), 'events/ev100000000000000000/responses/gus');
+  await assertFails(updateDoc(ref, { name: 'Gus', updatedAt: serverTimestamp() }), 'saved a moment ago');
+  await assertFails(deleteDoc(ref), 'deleting and re-creating would get round the wait');
+  await seedAnswer('hal', 'ev1', { updatedAt: Timestamp.fromMillis(Date.now() - 6000) });
+  const older = doc(guest('hal'), 'events/ev100000000000000000/responses/hal');
+  await assertSucceeds(updateDoc(older, { name: 'Hal', updatedAt: serverTimestamp() }));
+});
+
+test('the organizer can remove an answer straight away, however recent it is', async () => {
+  await seedEvent();
+  await seedAnswer('gus', 'ev1', { updatedAt: Timestamp.now() });
+  await assertSucceeds(deleteDoc(doc(account('olga'), 'events/ev100000000000000000/responses/gus')));
+});
+
 // ---------------------------------------------------------------- answers: reading and deleting
 
 test('a guest can read their own answer, even before it exists, but nobody else\'s', async () => {
@@ -394,11 +481,15 @@ test('a guest can read their own answer, even before it exists, but nobody else\
 test('only the organizer can list the answers to an event', async () => {
   await seedEvent();
   await seedAnswer('gus');
-  await assertSucceeds(getDocs(collection(account('olga'), 'events/ev100000000000000000/responses')));
+  await assertSucceeds(getDocs(query(collection(account('olga'), 'events/ev100000000000000000/responses'), limit(500))));
+  await assertSucceeds(getDocs(query(collection(account('olga'), 'events/ev100000000000000000/responses'), where('updatedAt', '>', Timestamp.fromMillis(0)), limit(500))));
+  await assertFails(getDocs(collection(account('olga'), 'events/ev100000000000000000/responses')), 'no limit');
+  await assertFails(getDocs(query(collection(account('olga'), 'events/ev100000000000000000/responses'), limit(501))), 'limit too large');
+  await assertFails(getDocs(query(collectionGroup(account('olga'), 'responses'), limit(10))), 'answers across all events');
   await assertSucceeds(getDoc(doc(account('olga'), 'events/ev100000000000000000/responses/gus')));
-  await assertFails(getDocs(collection(guest('gus'), 'events/ev100000000000000000/responses')));
-  await assertFails(getDocs(collection(account('pete'), 'events/ev100000000000000000/responses')));
-  await assertFails(getDocs(collection(stranger(), 'events/ev100000000000000000/responses')));
+  await assertFails(getDocs(query(collection(guest('gus'), 'events/ev100000000000000000/responses'), limit(500))));
+  await assertFails(getDocs(query(collection(account('pete'), 'events/ev100000000000000000/responses'), limit(500))));
+  await assertFails(getDocs(query(collection(stranger(), 'events/ev100000000000000000/responses'), limit(500))));
 });
 
 test('the organizer can remove any answer, and a guest can remove their own', async () => {
@@ -420,7 +511,7 @@ test('the organizer cannot edit what a guest answered', async () => {
 
 test('answers left behind by a deleted event stay private', async () => {
   await seedAnswer('gus', 'gone');
-  await assertFails(getDocs(collection(account('olga'), 'events/gone0000000000000000/responses')));
+  await assertFails(getDocs(query(collection(account('olga'), 'events/gone0000000000000000/responses'), limit(500))));
   await assertFails(getDoc(doc(account('olga'), 'events/gone0000000000000000/responses/gus')));
   await assertSucceeds(getDoc(doc(guest('gus'), 'events/gone0000000000000000/responses/gus')));
   await assertSucceeds(deleteDoc(doc(guest('gus'), 'events/gone0000000000000000/responses/gus')));
