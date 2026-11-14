@@ -4,3 +4,5 @@ playwright-report/
 *.log
 .firebase/
 .DS_Store
+.claude/
+review-firebase.json

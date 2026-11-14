@@ -8,6 +8,7 @@ import { getEvent, listAnswers, updateEvent, deleteEvent, deleteAnswer, getAccou
 import { buildSlots, slotWall } from '../core/slots.js';
 import { countAvailable, fromAnswer, bestWindows } from '../core/availability.js';
 import { gridRows, rangeRows, toCsv, exportFileName } from '../core/csv.js';
+import { validateEvent, LIMITS } from '../core/validate.js';
 import {
   eventSummary, timeRange, longDate, shortDate, timeLabel, duration, plural, ago, listNames,
 } from '../ui/format.js';
@@ -15,7 +16,7 @@ import { messageView } from './misc.js';
 
 const REFRESH_MS = 60_000;
 
-export function resultsView({ params, navigate }) {
+export function resultsView({ params, navigate, appName }) {
   const [eventId] = params;
   const holder = h('div', null, h('p', { class: 'loading', role: 'status' }, 'Loading the event…'));
   let disposed = false;
@@ -133,6 +134,47 @@ export function resultsView({ params, navigate }) {
         toast('Event deleted');
         navigate('/events');
       } catch (error) { toast(error.message); }
+    });
+
+    // ---- name and note
+    const headTitle = h('h1');
+    const headNote = h('p', { class: 'note-text' });
+    function drawHead() {
+      headTitle.textContent = event.title;
+      headNote.textContent = event.description;
+      headNote.hidden = !event.description;
+      document.title = `${event.title} · ${appName}`;
+    }
+    const editDetails = h('button', { type: 'button', class: 'btn btn-quiet' }, 'Edit name and note');
+    editDetails.addEventListener('click', () => {
+      const title = field({ label: 'Event name', control: h('input', { class: 'input', type: 'text', maxlength: LIMITS.titleMax, value: event.title, autocomplete: 'off' }) });
+      const note = field({ label: 'Note for invitees', optional: true, control: h('textarea', { class: 'textarea', maxlength: LIMITS.descriptionMax, rows: 3 }) });
+      note.input.value = event.description;
+      const failure = h('p', { class: 'form-error', role: 'alert', hidden: true });
+      confirmDialog({
+        title: 'Edit name and note',
+        body: h('div', { class: 'stack' }, title.el, note.el, failure),
+        confirmLabel: 'Save changes',
+        onConfirm: async () => {
+          const checked = validateEvent({ ...event, title: title.input.value, description: note.input.value });
+          title.setError(checked.errors.title || '');
+          note.setError(checked.errors.description || '');
+          failure.hidden = true;
+          if (!checked.ok) { (checked.errors.title ? title : note).input.focus(); return false; }
+          try {
+            await updateEvent(event.id, { title: checked.value.title, description: checked.value.description });
+          } catch (error) {
+            failure.textContent = error.message;
+            failure.hidden = false;
+            return false;
+          }
+          event.title = checked.value.title;
+          event.description = checked.value.description;
+          drawHead();
+          toast('Changes saved');
+          return true;
+        },
+      });
     });
 
     const exportGrid = h('button', { type: 'button', class: 'btn btn-quiet' }, icon('download'), 'Time-slot grid (.csv)');
@@ -313,10 +355,7 @@ export function resultsView({ params, navigate }) {
     const at = slots.utc[0];
     replace(holder, h('div', { class: 'stack stack-l' },
       h('div', { class: 'page-head' },
-        h('div', null,
-          h('h1', null, event.title),
-          h('p', null, eventSummary(event, at)),
-          event.description ? h('p', { class: 'note-text' }, event.description) : null),
+        h('div', null, headTitle, h('p', null, eventSummary(event, at)), headNote),
         stateTag),
       h('section', { class: 'sheet field', 'aria-label': 'Invite' },
         h('label', { for: linkId }, 'Invite link'),
@@ -339,9 +378,10 @@ export function resultsView({ params, navigate }) {
         h('div', { class: 'row' }, exportGrid, exportPeople)),
       h('section', { class: 'sheet stack no-print', 'aria-label': 'Manage' },
         h('h2', null, 'Manage'),
-        h('p', { class: 'muted' }, 'Close the event when you have enough answers: the link keeps working, but nobody can add or change times. The days and hours of an event can’t be changed once it is created.'),
-        h('div', { class: 'row' }, toggleOpen, h('a', { class: 'btn btn-quiet', href: `#/e/${event.id}` }, 'Add my own times'), remove))));
+        h('p', { class: 'muted' }, 'Close the event when you have enough answers: the link keeps working, but nobody can add or change times. The days and hours of an event can’t be changed once it is created; its name and note can.'),
+        h('div', { class: 'row' }, editDetails, toggleOpen, h('a', { class: 'btn btn-quiet', href: `#/e/${event.id}` }, 'Add my own times'), remove))));
 
+    drawHead();
     drawAll();
 
     return () => {

@@ -102,13 +102,27 @@ export function toast(message) {
 }
 
 /**
- * Asks before something that cannot be undone. Resolves true if the person confirms.
- * `body` may be a string or a node (for example a password field for re-authentication).
+ * A modal question. Resolves true if the person confirms, false if they cancel.
+ * `body` may be a string or a node (for example form fields).
+ * `onConfirm`, if given, runs when they confirm; returning false keeps the dialog open, so a form
+ * inside it can show what needs fixing.
  */
-export function confirmDialog({ title, body, confirmLabel, danger = false, cancelLabel = 'Cancel' }) {
+export function confirmDialog({ title, body, confirmLabel, danger = false, cancelLabel = 'Cancel', onConfirm }) {
   return new Promise((resolve) => {
+    let busy = false;
+    async function submit(e) {
+      e.preventDefault();
+      if (busy) return;
+      if (!onConfirm) { done(true); return; }
+      busy = true;
+      try {
+        if (await onConfirm() !== false) done(true);
+      } finally {
+        busy = false;
+      }
+    }
     const dialog = h('dialog', { 'aria-labelledby': 'dialog-title' },
-      h('form', { method: 'dialog', onsubmit: (e) => { e.preventDefault(); done(true); } },
+      h('form', { method: 'dialog', novalidate: true, onsubmit: submit },
         h('h2', { id: 'dialog-title' }, title),
         typeof body === 'string' ? h('p', { class: 'muted' }, body) : body,
         h('div', { class: 'actions' },

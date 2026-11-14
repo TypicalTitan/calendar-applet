@@ -210,6 +210,29 @@ test('deleting an account removes its events, and their invite links stop workin
   await expect(page.getByRole('heading', { name: 'We can’t find that event' })).toBeVisible();
 });
 
+test('the organizer can correct the name and note of an event, and invitees see the change', async ({ page, browser }) => {
+  await signUp(page);
+  const { link } = await createEvent(page, { title: 'Bored game weekend' });
+  await page.getByRole('button', { name: 'Edit name and note' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('Event name')).toHaveValue('Bored game weekend');
+  await dialog.getByLabel('Event name').fill('   ');
+  await dialog.getByRole('button', { name: 'Save changes' }).click();
+  await expect(dialog.getByText('Give the event a name.')).toBeVisible();
+  await dialog.getByLabel('Event name').fill('Board game weekend');
+  await dialog.getByLabel('Note for invitees').fill('Bring snacks.');
+  await dialog.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('heading', { name: 'Board game weekend', level: 1 })).toBeVisible();
+  await expect(page.getByText('Bring snacks.')).toBeVisible();
+
+  const context = await browser.newContext(NY);
+  const guest = await context.newPage();
+  await guest.goto(link);
+  await expect(guest.getByRole('heading', { name: 'Board game weekend', level: 1 })).toBeVisible();
+  await expect(guest.getByText('Bring snacks.')).toBeVisible();
+  await context.close();
+});
+
 test('deleting an event takes it off the list', async ({ page }) => {
   await signUp(page);
   await createEvent(page, { title: 'Short-lived' });
