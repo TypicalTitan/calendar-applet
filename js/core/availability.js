@@ -87,6 +87,26 @@ export function bestWindows(grid, answers, length, limit = Infinity) {
   return blocks.slice(0, limit);
 }
 
+/**
+ * How head-counts map to shades on the results grid. Up to five people-counts each get their own
+ * shade; beyond that, counts are grouped into five bands so neighbouring shades stay tellable
+ * apart. Zero is always its own class (no shade), so one person free never looks like nobody.
+ *   classes        number of shades in use (0 when nobody is free anywhere)
+ *   classOf(n)     0 for nobody, otherwise 1..classes
+ *   ranges[c]      [lowest, highest] head-count shown in class c
+ */
+export function heatScale(max) {
+  const classes = Math.min(Math.max(0, max), 5);
+  const classOf = (n) => (n <= 0 || classes === 0 ? 0 : 1 + Math.floor(((Math.min(n, max) - 1) * classes) / max));
+  const ranges = [[0, 0]];
+  for (let n = 1; n <= max; n++) {
+    const c = classOf(n);
+    if (ranges[c]) ranges[c][1] = n;
+    else ranges[c] = [n, n];
+  }
+  return { classes, classOf, ranges };
+}
+
 function prefixSums(flags, count) {
   const sums = new Int32Array(count + 1);
   for (let i = 0; i < count; i++) sums[i + 1] = sums[i] + (flags[i] ? 1 : 0);

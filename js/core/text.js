@@ -2,7 +2,7 @@
 
 // Characters that are invisible or reorder surrounding text. Joiners needed by emoji and by
 // scripts such as Persian (U+200C, U+200D) are deliberately kept.
-const INVISIBLE = /[​⁠﻿‪-‮⁦-⁩]/gu;
+const INVISIBLE = /[\u200B\u2060\uFEFF\u202A-\u202E\u2066-\u2069]/gu;
 const CONTROL = /\p{Cc}/gu;
 const CONTROL_EXCEPT_NEWLINE = /[^\P{Cc}\n]/gu;
 

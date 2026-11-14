@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyAnswer, isAnswer, toAnswer, fromAnswer, countAvailable, bestWindows, cleanName } from '../../js/core/availability.js';
+import { emptyAnswer, isAnswer, toAnswer, fromAnswer, countAvailable, bestWindows, cleanName, heatScale } from '../../js/core/availability.js';
 
 test('emptyAnswer is one zero per slot', () => {
   assert.equal(emptyAnswer(4), '0000');
@@ -82,7 +82,7 @@ test('bestWindows returns at most the requested number of blocks', () => {
 
 test('cleanName trims, collapses spaces and removes control characters', () => {
   assert.equal(cleanName('  Ana   Maria \n'), 'Ana Maria');
-  assert.equal(cleanName('Bo\u0000b​'), 'Bob');
+  assert.equal(cleanName('Bo\u0000b\u200B'), 'Bob');
   assert.equal(cleanName(null), '');
 });
 
@@ -91,4 +91,28 @@ test('cleanName limits length without cutting a character in half', () => {
   const emoji = cleanName('😀'.repeat(40));
   assert.ok(emoji.length <= 60);
   assert.equal([...emoji].every((ch) => ch === '😀'), true);
+});
+
+test('heatScale gives every head-count its own shade when there are only a few', () => {
+  const scale = heatScale(3);
+  assert.equal(scale.classes, 3);
+  assert.deepEqual([0, 1, 2, 3].map(scale.classOf), [0, 1, 2, 3]);
+  assert.deepEqual(scale.ranges, [[0, 0], [1, 1], [2, 2], [3, 3]]);
+});
+
+test('heatScale groups head-counts into at most five shades, and never hides a single person', () => {
+  const scale = heatScale(12);
+  assert.equal(scale.classes, 5);
+  assert.equal(scale.classOf(0), 0);
+  assert.equal(scale.classOf(1), 1);
+  assert.equal(scale.classOf(12), 5);
+  assert.deepEqual(scale.ranges, [[0, 0], [1, 3], [4, 5], [6, 8], [9, 10], [11, 12]]);
+  for (let n = 1; n < 12; n++) assert.ok(scale.classOf(n) <= scale.classOf(n + 1));
+});
+
+test('heatScale copes with nobody free anywhere', () => {
+  const scale = heatScale(0);
+  assert.equal(scale.classes, 0);
+  assert.equal(scale.classOf(0), 0);
+  assert.deepEqual(scale.ranges, [[0, 0]]);
 });

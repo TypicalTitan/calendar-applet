@@ -18,13 +18,21 @@ test('safeText disarms text a spreadsheet would run as a formula', () => {
   assert.equal(safeText('+1'), "'+1");
   assert.equal(safeText('-Alex'), "'-Alex");
   assert.equal(safeText('@home'), "'@home");
-  assert.equal(safeText('\tTab'), "'\tTab");
   assert.equal(safeText('Alex'), 'Alex');
   assert.equal(safeText('A=B'), 'A=B');
 });
 
+test('safeText also disarms full-width formula characters and flattens line breaks and tabs', () => {
+  assert.equal(safeText('\uFF1DSUM(A1)'), "'\uFF1DSUM(A1)");
+  assert.equal(safeText('\uFF0B1'), "'\uFF0B1");
+  assert.equal(safeText('\uFF0D1'), "'\uFF0D1");
+  assert.equal(safeText('\uFF201'), "'\uFF201");
+  assert.equal(safeText('two\r\nlines\tand a tab'), 'two lines and a tab');
+  assert.equal(safeText('  =1+1'), "'=1+1");
+});
+
 test('toCsv writes a byte-order mark and CRLF line endings', () => {
-  assert.equal(toCsv([['a', 'b'], ['1', 'x,y']]), '﻿a,b\r\n1,"x,y"\r\n');
+  assert.equal(toCsv([['a', 'b'], ['1', 'x,y']]), '\uFEFFa,b\r\n1,"x,y"\r\n');
 });
 
 const event = {
@@ -71,17 +79,22 @@ test('gridRows shows the real local time of every slot across a clock change', (
 test('rangeRows lists each person\'s free time as merged ranges', () => {
   const rows = rangeRows(event, buildSlots(event), responses, 'America/New_York');
   assert.deepEqual(rows, [
-    ['Name', 'Date', 'Day', 'Start', 'End', 'Minutes', 'Time zone'],
-    ['Ana', '2026-11-21', 'Sat', '09:00', '11:00', 120, 'America/New_York'],
-    ['Ana', '2026-11-22', 'Sun', '10:00', '11:00', 60, 'America/New_York'],
-    ["'=Ben", '2026-11-21', 'Sat', '10:00', '11:00', 60, 'America/New_York'],
-    ["'=Ben", '2026-11-22', 'Sun', '10:00', '11:00', 60, 'America/New_York'],
+    ['Name', 'Date', 'Day', 'Start', 'End', 'Minutes', 'Time zone', 'Answer updated (UTC)'],
+    ['Ana', '2026-11-21', 'Sat', '09:00', '11:00', 120, 'America/New_York', ''],
+    ['Ana', '2026-11-22', 'Sun', '10:00', '11:00', 60, 'America/New_York', ''],
+    ["'=Ben", '2026-11-21', 'Sat', '10:00', '11:00', 60, 'America/New_York', ''],
+    ["'=Ben", '2026-11-22', 'Sun', '10:00', '11:00', 60, 'America/New_York', ''],
   ]);
+});
+
+test('rangeRows records when each answer was last changed', () => {
+  const rows = rangeRows(event, buildSlots(event), [{ name: 'Ana', slots: '1000', updatedAt: Date.UTC(2026, 10, 14, 10, 2, 0) }], 'America/New_York');
+  assert.equal(rows[1][7], '2026-11-14T10:02:00Z');
 });
 
 test('rangeRows keeps a line for someone who marked nothing', () => {
   const rows = rangeRows(event, buildSlots(event), [{ name: 'Cy', slots: '0000' }], 'America/New_York');
-  assert.deepEqual(rows[1], ['Cy', '', '', '', '', 0, 'America/New_York']);
+  assert.deepEqual(rows[1], ['Cy', '', '', '', '', 0, 'America/New_York', '']);
 });
 
 test('exportFileName is safe on every operating system', () => {

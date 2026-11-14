@@ -18,16 +18,19 @@ export function csvCell(value) {
 }
 
 /**
- * Text typed by a person can start with a character that makes a spreadsheet treat the cell as
- * a formula. A leading apostrophe makes it plain text again (OWASP "CSV injection").
+ * Makes text typed by a person safe to put in a cell. Line breaks and tabs become spaces, and a
+ * leading character that would make a spreadsheet treat the cell as a formula (including the
+ * full-width look-alikes) gets an apostrophe in front, which spreadsheets read as "plain text"
+ * (OWASP "CSV injection").
  */
 export function safeText(text) {
-  return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+  const flat = String(text).replace(/[\t\r\n]+/g, ' ').trim();
+  return /^[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/.test(flat) ? `'${flat}` : flat;
 }
 
 /** Rows to a CSV file body: UTF-8 byte-order mark so Excel reads accents, CRLF line endings. */
 export function toCsv(rows) {
-  return '﻿' + rows.map((row) => row.map(csvCell).join(',') + '\r\n').join('');
+  return '\uFEFF' + rows.map((row) => row.map(csvCell).join(',') + '\r\n').join('');
 }
 
 function columnNames(responses) {
@@ -59,9 +62,10 @@ export function gridRows(event, slots, responses, zone) {
 export function rangeRows(event, slots, responses, zone) {
   const names = columnNames(responses);
   const step = event.slotMinutes * MINUTE;
-  const rows = [['Name', 'Date', 'Day', 'Start', 'End', 'Minutes', 'Time zone']];
+  const rows = [['Name', 'Date', 'Day', 'Start', 'End', 'Minutes', 'Time zone', 'Answer updated (UTC)']];
   responses.forEach((response, p) => {
     const flags = fromAnswer(response.slots, slots.count);
+    const updated = Number.isFinite(response.updatedAt) ? utcStamp(response.updatedAt) : '';
     let any = false;
     for (let day = 0; day < event.dates.length; day++) {
       let run = null;
@@ -69,7 +73,7 @@ export function rangeRows(event, slots, responses, zone) {
         if (!run) return;
         const start = utcToWall(run.from, zone);
         const end = utcToWall(run.to, zone);
-        rows.push([names[p], start.date, DAYS[start.weekday], clock(start.minute), clock(end.minute), (run.to - run.from) / MINUTE, zone]);
+        rows.push([names[p], start.date, DAYS[start.weekday], clock(start.minute), clock(end.minute), (run.to - run.from) / MINUTE, zone, updated]);
         any = true;
         run = null;
       };
@@ -81,7 +85,7 @@ export function rangeRows(event, slots, responses, zone) {
       }
       flush();
     }
-    if (!any) rows.push([names[p], '', '', '', '', 0, zone]);
+    if (!any) rows.push([names[p], '', '', '', '', 0, zone, updated]);
   });
   return rows;
 }

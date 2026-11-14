@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--
+    Content-Security-Policy: this page may only run its own scripts and styles, and may only talk
+    to the Firebase sign-in and database services. If you add a feature that needs another host,
+    add it here.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com; manifest-src 'self'; base-uri 'none'; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f3f5f1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#101418" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="Find a time everyone is free. Pick the days, share a link, and see when your friends can make it.">
+  <title>Overlap</title>
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="./assets/fonts/archivo-latin-wdth-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./css/app.css">
+  <link rel="modulepreload" href="./js/vendor/firebase.js">
+  <script type="module" src="./js/main.js"></script>
+</head>
+<body>
+  <div id="app">
+    <noscript>
+      <p class="noscript">This site needs JavaScript to show events and save your times. Turn it on in your browser settings and reload.</p>
+    </noscript>
+  </div>
+</body>
+</html>
