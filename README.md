@@ -194,8 +194,8 @@ times converted to theirs and can switch to the event's zone.
   between two days. Ordinary daytime and evening windows are not affected.
 - **If you rename the repository**, change the `/calendar-applet/` paths in
   [`404.html`](404.html) to match.
-- **To rename the app**, change `appName` in [`js/config.js`](js/config.js) and the `<title>` in
-  [`index.html`](index.html).
+- **To rename the app**, change `appName` in [`js/config.js`](js/config.js), and the `<title>` and
+  `og:site_name` in [`index.html`](index.html).
 
 ## How it is built
 

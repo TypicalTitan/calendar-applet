@@ -1,6 +1,6 @@
 // The invite page: anyone with the link types a name and marks the times they are free.
 
-import { h, replace, field, toast, confirmDialog, touchFirst } from '../ui/dom.js';
+import { h, replace, field, toast, confirmDialog, touchFirst, setBusy, isBusy } from '../ui/dom.js';
 import { createPaintGrid } from '../ui/grid.js';
 import { zoneChooser } from '../ui/zone.js';
 import { getEvent, getMyAnswer, saveMyAnswer, deleteMyAnswer, getAccount, forgetGuest, SAVE_PAUSE } from '../backend.js';
@@ -24,7 +24,7 @@ export function respondView({ params }) {
       if (disposed) return;
       if (!event) {
         replace(holder, messageView({
-          title: 'We can’t find that event',
+          title: 'Can’t find that event',
           body: 'The link may be cut short, or the event was deleted. Ask whoever sent it.',
         }).el);
         return;
@@ -60,6 +60,8 @@ export function respondView({ params }) {
     let bits = fromAnswer(existing?.slots, slots.count);
     let dirty = false;
     let removing = false;
+    let closedNote = null;   // on a closed event: the sentence saying so,
+    let closedSaved = null;  // and what this visitor saved, with the way to remove it
     // The database refuses a second save within a few seconds of the last one. Rather than show
     // an error, wait out whatever is left of that pause before sending.
     let lastWriteAt = existing?.updatedAt || 0;
@@ -96,7 +98,7 @@ export function respondView({ params }) {
     name.input.addEventListener('input', () => { dirty = true; name.setError(''); keepDraft(); });
 
     const tally = h('p', { class: 'status-line nums', role: 'status' });
-    const status = h('p', { class: 'status-line', role: 'status' });
+    const status = h('p', { class: 'status-line', role: 'status', tabindex: '-1' });
     const save = h('button', { type: 'submit', class: 'btn' }, 'Save my times');
     const clear = h('button', { type: 'button', class: 'btn btn-quiet btn-small' }, 'Clear');
     const remove = h('button', { type: 'button', class: 'linklike', hidden: !saved }, 'Remove my answer');
@@ -144,12 +146,13 @@ export function respondView({ params }) {
 
     clear.addEventListener('click', () => grid.clear());
 
-    const setBusy = (busy) => { save.disabled = busy; remove.disabled = busy; };
+    // Busy, not disabled: a disabled button would drop the keyboard focus it was pressed with.
+    const busy = (on) => { setBusy(save, on); setBusy(remove, on); };
 
     const form = h('form', { class: 'stack', novalidate: true });
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (save.disabled) return;
+      if (isBusy(save)) return;
       const cleaned = cleanName(name.input.value);
       if (!cleaned) {
         name.setError('Put in your name first.');
@@ -157,7 +160,7 @@ export function respondView({ params }) {
         return;
       }
       formError.hidden = true;
-      setBusy(true);
+      busy(true);
       status.classList.remove('is-good');
       status.textContent = 'Saving…';
       try {
@@ -170,6 +173,7 @@ export function respondView({ params }) {
         clearDraft();
         name.input.value = cleaned;
         remove.hidden = false;
+        whose.textContent = `Saved from this browser as ${cleaned}. `;
         status.classList.add('is-good');
         status.textContent = 'Saved. You can change your times from this browser until the event is closed.';
       } catch (error) {
@@ -177,12 +181,12 @@ export function respondView({ params }) {
         formError.textContent = error.message;
         formError.hidden = false;
       } finally {
-        setBusy(false);
+        busy(false);
       }
     });
 
     remove.addEventListener('click', async () => {
-      if (removing) return;
+      if (removing || isBusy(remove)) return;
       const ok = await confirmDialog({
         title: 'Remove your answer?',
         body: 'Your name and times are deleted from this event.',
@@ -193,7 +197,7 @@ export function respondView({ params }) {
       // The database may make this wait a few seconds after a save. Say so, and do not let the
       // person leave thinking it is already done.
       removing = true;
-      setBusy(true);
+      busy(true);
       formError.hidden = true;
       status.classList.remove('is-good');
       status.textContent = 'Removing…';
@@ -210,21 +214,28 @@ export function respondView({ params }) {
         bits = new Uint8Array(slots.count);
         grid.setValue(bits);
         showTally();
+        if (!event.open) {
+          // Nothing of theirs is left to show, and nothing new can be added.
+          closedNote.textContent = 'This event is closed. No more answers.';
+          closedSaved.hidden = true;
+        }
         status.textContent = 'Answer removed.';
+        status.focus(); // the button that was pressed is gone
       } catch (error) {
         status.textContent = '';
         formError.textContent = error.message;
         formError.hidden = false;
       } finally {
         removing = false;
-        setBusy(false);
+        busy(false);
       }
     });
 
     // Guests are recognised by their browser. On a shared computer the next person would
     // otherwise be editing the first person's answer without realising.
+    const whose = h('span', null, `Saved from this browser as ${existing?.name || ''}. `);
     const someoneElse = h('p', { class: 'banner banner-plain', hidden: !(existing && existing.as === 'guest') },
-      h('span', null, `Saved from this browser as ${existing?.name || ''}. `),
+      whose,
       h('button', { type: 'button', class: 'linklike', onclick: startFresh }, 'Someone else? Add a separate answer'));
     async function startFresh() {
       const ok = await confirmDialog({
@@ -265,24 +276,27 @@ export function respondView({ params }) {
 
     // No wider than the timetable needs: a name box a metre long over a narrow grid looks lost.
     const width = { '--days': String(event.dates.length) };
-    const touch = touchFirst();
 
     const organizerNote = isOrganizer
       ? h('div', { class: 'banner banner-plain' },
-        h('p', null, 'You made this event. This is what your friends see. You can add your own times here too.'),
+        h('p', null, event.open
+          ? 'You made this event. This is what your friends see. You can add your own times here too.'
+          : 'You made this event. This is what your friends see.'),
         h('a', { class: 'btn btn-quiet btn-small', href: `#/e/${event.id}/results` }, 'See the answers'))
       : null;
 
     if (!event.open) {
       // Closed: nothing can be added or changed, but what you saved is still yours to remove.
+      closedNote = h('p', null, saved
+        ? 'This event is closed. Your times can’t be changed now. Here’s what you saved.'
+        : 'This event is closed. No more answers.');
+      closedSaved = saved ? h('div', { class: 'stack' },
+        h('div', { class: 'sheet stack' }, chooser.el, grid.el, h('div', { class: 'tt-foot' }, tally)),
+        h('div', { class: 'row' }, remove)) : null;
       replace(holder, h('div', { class: 'stack invite', style: width },
         head, organizerNote,
-        h('div', { class: 'banner' },
-          h('p', null, saved
-            ? 'This event is closed. Your times can’t be changed now. Here’s what you saved.'
-            : 'This event is closed. No more answers.')),
-        saved ? h('div', { class: 'sheet stack' }, chooser.el, grid.el, h('div', { class: 'tt-foot' }, tally)) : null,
-        saved ? h('div', { class: 'row' }, remove) : null,
+        h('div', { class: 'banner' }, closedNote),
+        closedSaved,
         formError, status));
     } else {
       replace(form,
@@ -291,13 +305,14 @@ export function respondView({ params }) {
         h('div', { class: 'sheet stack' },
           name.el,
           chooser.el,
-          h('p', { class: 'muted', id: hintId }, touch
+          h('p', { class: 'muted', id: hintId }, touchFirst()
             ? 'Tap the times you’re free. To mark several, press and hold, then drag.'
-            : 'Click or drag over the times you’re free. Do it again to unmark.'),
+            : 'Click or drag over the times you’re free. Do it again to clear.'),
+          // Always in the page, so the grid is described by it; shown once the grid is being
+          // used from the keyboard (see .keys in the stylesheet).
+          h('p', { class: 'keys muted small', id: keysId }, 'Keyboard: arrows move, Space marks or clears, Shift+arrow carries the mark along.'),
           grid.el,
-          h('div', { class: 'tt-foot' }, tally, clear),
-          // Always in the page, so the grid can be described by it; shown where a keyboard is likely.
-          h('p', { class: touch ? 'vh' : 'muted small', id: keysId }, 'Keyboard: arrows move, Space marks or clears, Shift+arrow carries the mark along.')),
+          h('div', { class: 'tt-foot' }, tally, clear)),
         formError,
         h('div', { class: 'row' }, save, remove),
         status,

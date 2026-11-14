@@ -121,3 +121,21 @@ test('the signed-in menu sits on one line on a phone, and nothing sticks out sid
   expect(new Set(tops).size).toBe(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test('a dialog’s buttons stack in the order the keyboard reaches them', async ({ page }) => {
+  await createEvent(page);
+  await page.getByRole('button', { name: 'Delete event' }).click();
+  const dialog = page.getByRole('dialog');
+  const cancel = await dialog.getByRole('button', { name: 'Cancel' }).boundingBox();
+  const confirm = await dialog.getByRole('button', { name: 'Delete event' }).boundingBox();
+  expect(cancel.y).toBeLessThan(confirm.y);
+});
+
+test('when copying fails on a phone, the page does not talk about keys a phone lacks', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('refused')) }, configurable: true });
+  });
+  await createEvent(page);
+  await page.getByRole('button', { name: 'Copy link' }).click();
+  await expect(page.getByText('Couldn’t copy. Press and hold the link to copy it.')).toBeVisible();
+});

@@ -1,4 +1,4 @@
-import { h, toast, copyText } from '../ui/dom.js';
+import { h, toast, copyText, touchFirst } from '../ui/dom.js';
 
 /**
  * A plain page with a heading, a sentence or two, and optionally a way forward. `action` is the
@@ -36,7 +36,7 @@ function rulesBox() {
   const copy = h('button', { type: 'button', class: 'btn btn-quiet btn-small', disabled: true }, 'Copy the rules');
   copy.addEventListener('click', async () => {
     if (await copyText(text.value)) toast('Rules copied');
-    else { text.focus(); text.select(); toast('Press Ctrl+C or ⌘C to copy'); }
+    else { text.focus(); text.select(); toast(touchFirst() ? 'Couldn’t copy. Press and hold the text to copy it.' : 'Press Ctrl+C or ⌘C to copy'); }
   });
   fetch('./firestore.rules')
     .then((reply) => (reply.ok ? reply.text() : Promise.reject(new Error('not found'))))

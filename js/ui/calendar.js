@@ -4,10 +4,10 @@
 // remove a run of days. Arrow keys move, Space or Enter switches a day, Page Up/Down change month.
 
 import { monthMatrix, addDays, dateRange } from '../core/dates.js';
-import { h, icon } from './dom.js';
+import { h, icon, setBusy, isBusy } from './dom.js';
 import { fullDate, monthYear, weekdayNames, weekStart, daysSummary, plural } from './format.js';
 
-export function createDatePicker({ value = [], min, max, limit, label, onChange = () => {} }) {
+export function createDatePicker({ value = [], min, max, limit, label, describedBy, onChange = () => {} }) {
   const selected = new Set(value);
   const start = weekStart();
   const firstShown = [...selected].sort()[0] || min;
@@ -19,10 +19,12 @@ export function createDatePicker({ value = [], min, max, limit, label, onChange 
   let lastPointerAt = -Infinity;
 
   const title = h('div', { class: 'cal-title', 'aria-live': 'polite' });
-  const prev = h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Previous month', onclick: () => step(-1) }, icon('left'));
-  const next = h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Next month', onclick: () => step(1) }, icon('right'));
+  // At the first or last month an arrow is switched off but not disabled, so that pressing it
+  // to get there does not throw the keyboard focus away.
+  const prev = h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Previous month', onclick: () => { if (!isBusy(prev)) step(-1); } }, icon('left'));
+  const next = h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Next month', onclick: () => { if (!isBusy(next)) step(1); } }, icon('right'));
   const body = h('tbody');
-  const grid = h('table', { class: 'cal-grid', role: 'grid', 'aria-label': label, 'aria-multiselectable': 'true' },
+  const grid = h('table', { class: 'cal-grid', role: 'grid', 'aria-label': label, 'aria-multiselectable': 'true', 'aria-describedby': describedBy || null },
     h('thead', null, h('tr', null, weekdayNames(start).map((d) => h('th', { scope: 'col', abbr: d.long }, d.short)))),
     body);
   const summary = h('p', { class: 'cal-summary muted', 'aria-live': 'polite' });
@@ -74,8 +76,8 @@ export function createDatePicker({ value = [], min, max, limit, label, onChange 
     }))));
     const [minYear, minMonth] = monthOf(min);
     const [maxYear, maxMonth] = monthOf(max);
-    prev.disabled = year < minYear || (year === minYear && month <= minMonth);
-    next.disabled = year > maxYear || (year === maxYear && month >= maxMonth);
+    setBusy(prev, year < minYear || (year === minYear && month <= minMonth));
+    setBusy(next, year > maxYear || (year === maxYear && month >= maxMonth));
   }
 
   function step(delta) {

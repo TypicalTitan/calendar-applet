@@ -1,7 +1,7 @@
 // Shown to an organizer whose email address is not confirmed yet. The database refuses to let an
 // unconfirmed account create events, so this is where a new organizer waits for the email.
 
-import { h, toast } from '../ui/dom.js';
+import { h, toast, setBusy, isBusy } from '../ui/dom.js';
 import { resendVerification, recheckVerification } from '../backend.js';
 
 const RESEND_WAIT_MS = 60_000;
@@ -30,14 +30,15 @@ export function verifyPanel(account, onConfirmed) {
 
   check.addEventListener('click', () => look(true));
   resend.addEventListener('click', async () => {
-    resend.disabled = true;
+    if (isBusy(resend)) return;
+    setBusy(resend, true);
     try {
       await resendVerification();
       note.textContent = 'Sent. Can take a few minutes.';
     } catch (error) {
       note.textContent = error.message;
     }
-    setTimeout(() => { resend.disabled = false; }, RESEND_WAIT_MS);
+    setTimeout(() => setBusy(resend, false), RESEND_WAIT_MS);
   });
 
   // Most people open the link in another tab and come back: notice that without being asked.

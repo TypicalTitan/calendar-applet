@@ -1,7 +1,7 @@
 // What the person who made an event sees: the invite link, a grid shaded by how many people are
 // free, the best times, who has answered, and the spreadsheet downloads.
 
-import { h, replace, icon, toast, confirmDialog, copyText, downloadFile, field, uid } from '../ui/dom.js';
+import { h, replace, icon, toast, confirmDialog, copyText, downloadFile, field, uid, touchFirst } from '../ui/dom.js';
 import { createHeatGrid, heatLegend } from '../ui/grid.js';
 import { zoneChooser } from '../ui/zone.js';
 import { getEvent, listAnswers, listAnswersSince, updateEvent, deleteEvent, deleteAnswer, getAccount, ANSWER_LIMIT } from '../backend.js';
@@ -39,7 +39,7 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
     if (disposed) return;
     if (!event || event === 'damaged') {
       replace(holder, messageView({
-        title: 'We can’t find that event',
+        title: 'Can’t find that event',
         body: 'It may have been deleted, or the address may be cut short.',
         action: { href: '#/events', label: 'Your events' },
       }).el);
@@ -79,7 +79,11 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
     const copy = h('button', { type: 'button', class: 'btn' }, 'Copy link');
     copy.addEventListener('click', async () => {
       if (await copyText(inviteUrl)) toast('Link copied');
-      else { linkInput.focus(); linkInput.select(); toast('Press Ctrl+C or ⌘C to copy the link'); }
+      else {
+        linkInput.focus();
+        linkInput.select();
+        toast(touchFirst() ? 'Couldn’t copy. Press and hold the link to copy it.' : 'Press Ctrl+C or ⌘C to copy the link');
+      }
     });
     const share = navigator.share
       ? h('button', { type: 'button', class: 'btn btn-quiet', onclick: () => navigator.share({ title: event.title, text: `When are you free for ${event.title}?`, url: inviteUrl }).catch(() => {}) }, 'Share')
@@ -99,10 +103,16 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
     const legendHolder = h('div');
     const gridHolder = h('div');
     const tableToggle = h('button', { type: 'button', class: 'linklike' }, 'Show as a table');
+    // The button names the other view. One person's times alone only show on the grid, so the
+    // table always shows everyone.
     tableToggle.addEventListener('click', () => {
       showTable = !showTable;
-      tableToggle.textContent = showTable ? 'Show as a grid' : 'Show as a table'; // the button names the other view
+      tableToggle.textContent = showTable ? 'Show as a grid' : 'Show as a table';
+      if (showTable && isolated) { isolated = null; markShownAlone(); }
       drawGridArea();
+      drawDetail(grid.selected);
+      // The table appears above this button: take the keyboard to it, or it would be missed.
+      if (showTable) gridHolder.querySelector('.table-wrap')?.focus();
     });
     const refresh = h('button', { type: 'button', class: 'linklike' }, 'Refresh');
     refresh.addEventListener('click', () => reload({ announce: true, full: true }));
@@ -221,7 +231,8 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
 
     function drawDetail(index) {
       if (index < 0 || index === undefined) {
-        replace(detail, h('p', { class: 'muted' }, 'Pick a time to see who’s free then.'));
+        // In the table view there is no grid to pick from, so there is nothing to say.
+        replace(detail, showTable ? null : h('p', { class: 'muted' }, 'Pick a time on the grid to see who’s free then.'));
         return;
       }
       const free = [];
@@ -279,14 +290,24 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
       }));
     }
 
+    function markShownAlone() {
+      for (const button of peopleList.querySelectorAll('.who')) {
+        button.setAttribute('aria-pressed', String(button.dataset.key === `who:${isolated}`));
+      }
+    }
+
     // Shows one person's times alone (or everyone's again) without rebuilding the list, so the
     // button that was pressed keeps the keyboard focus and announces its new state.
     function showOnly(id) {
       const from = isolated;
       isolated = id;
-      for (const button of peopleList.querySelectorAll('.who')) {
-        button.setAttribute('aria-pressed', String(button.dataset.key === `who:${isolated}`));
+      if (id && showTable) {
+        // Chosen while the table is up: go back to the grid, where the choice shows.
+        showTable = false;
+        tableToggle.textContent = 'Show as a table';
+        drawDetail(grid.selected);
       }
+      markShownAlone();
       drawGridArea();
       if (id === null && from && !peopleList.contains(document.activeElement)) {
         peopleList.querySelector(`[data-key="who:${from}"]`)?.focus();
@@ -364,9 +385,11 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
         // The table is rebuilt from the data, but stays scrolled where the reader left it.
         const old = gridHolder.querySelector('.table-wrap');
         const at = old ? [old.scrollLeft, old.scrollTop] : [0, 0];
+        const hadFocus = Boolean(old) && old === document.activeElement;
         const table = dataTable();
         replace(gridHolder, table);
         [table.scrollLeft, table.scrollTop] = at;
+        if (hadFocus) table.focus({ preventScroll: true });
       } else if (gridHolder.firstChild !== grid.el) {
         replace(gridHolder, grid.el); // otherwise left alone: re-attaching it would lose its scroll position
       }

@@ -1,6 +1,6 @@
 // Account settings: name, email confirmation, password, and deleting the account.
 
-import { h, field, toast, confirmDialog } from '../ui/dom.js';
+import { h, field, toast, confirmDialog, setBusy, isBusy } from '../ui/dom.js';
 import {
   getAccount, changeName, changePassword, deleteAccount, resendVerification, recheckVerification, passwordProblem, PASSWORD_MIN,
 } from '../backend.js';
@@ -17,10 +17,10 @@ export function accountView({ navigate }) {
     e.preventDefault();
     const cleaned = tidyLine(name.input.value).slice(0, 60);
     name.setError(cleaned ? '' : 'Enter your name.');
-    if (!cleaned) return;
-    saveName.disabled = true;
+    if (!cleaned || isBusy(saveName)) return;
+    setBusy(saveName, true);
     try { await changeName(cleaned); toast('Name saved'); } catch (error) { toast(error.message, { error: true }); }
-    saveName.disabled = false;
+    setBusy(saveName, false);
   });
 
   // ---- email
@@ -34,9 +34,10 @@ export function accountView({ navigate }) {
   }
   const resend = h('button', { type: 'button', class: 'btn btn-quiet btn-small' }, 'Send it again');
   resend.addEventListener('click', async () => {
-    resend.disabled = true;
+    if (isBusy(resend)) return;
+    setBusy(resend, true);
     try { await resendVerification(); toast('Confirmation email sent'); } catch (error) { toast(error.message, { error: true }); }
-    setTimeout(() => { resend.disabled = false; }, 60_000);
+    setTimeout(() => setBusy(resend, false), 60_000);
   });
   const recheck = h('button', { type: 'button', class: 'btn btn-quiet btn-small' }, 'I’ve confirmed');
   recheck.addEventListener('click', async () => {
@@ -64,8 +65,8 @@ export function accountView({ navigate }) {
     passwordError.hidden = true;
     current.setError(current.input.value ? '' : 'Enter your current password.');
     next.setError(await passwordProblem(next.input.value));
-    if (!current.input.value || next.input.getAttribute('aria-invalid') === 'true') return;
-    savePassword.disabled = true;
+    if (!current.input.value || next.input.getAttribute('aria-invalid') === 'true' || isBusy(savePassword)) return;
+    setBusy(savePassword, true);
     try {
       await changePassword({ current: current.input.value, next: next.input.value });
       passwordForm.reset();
@@ -75,7 +76,7 @@ export function accountView({ navigate }) {
         ? 'The current password isn’t right.' : error.message;
       passwordError.hidden = false;
     }
-    savePassword.disabled = false;
+    setBusy(savePassword, false);
   });
 
   // ---- delete
@@ -83,6 +84,7 @@ export function accountView({ navigate }) {
   const removeError = h('p', { class: 'form-error', role: 'alert', hidden: true });
   const removeStatus = h('p', { class: 'status-line', role: 'status' });
   remove.addEventListener('click', async () => {
+    if (isBusy(remove)) return;
     const confirmField = field({ label: 'Your password', control: h('input', { class: 'input', type: 'password', autocomplete: 'current-password', required: true }) });
     const ok = await confirmDialog({
       title: 'Delete your account?',
@@ -93,7 +95,7 @@ export function accountView({ navigate }) {
       danger: true,
     });
     if (!ok) return;
-    remove.disabled = true;
+    setBusy(remove, true);
     removeError.hidden = true;
     removeStatus.textContent = 'Deleting your events and account…';
     try {
@@ -108,7 +110,7 @@ export function accountView({ navigate }) {
         : `Your account was not deleted. ${error.message} Events already removed stay removed; try again to finish.`;
       removeError.hidden = false;
       removeStatus.textContent = '';
-      remove.disabled = false;
+      setBusy(remove, false);
     }
   });
 

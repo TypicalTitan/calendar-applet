@@ -169,6 +169,17 @@ export function downloadFile(name, text, type = 'text/csv;charset=utf-8') {
 
 let ids = 0;
 /**
+ * Marks a button as busy without disabling it. A disabled button throws away the keyboard
+ * focus; this one keeps it and looks the same, and its handler checks isBusy() before acting.
+ */
+export function setBusy(button, busy) {
+  if (busy) button.setAttribute('aria-disabled', 'true');
+  else button.removeAttribute('aria-disabled');
+}
+
+export const isBusy = (button) => button.getAttribute('aria-disabled') === 'true';
+
+/**
  * True where a finger is the main way of pointing (a phone or tablet), so instructions can say
  * "tap". A laptop that also has a touch screen still counts as a mouse.
  */

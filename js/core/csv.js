@@ -60,7 +60,7 @@ export function gridRows(event, slots, responses, zone) {
   const names = columnNames(responses);
   const answers = responses.map((r) => fromAnswer(r.slots, slots.count));
   const totals = countAvailable(responses.map((r) => r.slots), slots.count);
-  const rows = [['Date', 'Day', 'Start', 'End', 'Time zone', 'Start (UTC)', 'Available', 'Responses', ...names]];
+  const rows = [['Date', 'Day', 'Start', 'End', 'Time zone', 'Start (UTC)', 'Free', 'Answers', ...names]];
   for (let i = 0; i < slots.count; i++) {
     const w = slotWall(event, slots, i, zone);
     rows.push([

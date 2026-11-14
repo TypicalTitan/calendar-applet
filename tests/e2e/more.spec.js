@@ -250,7 +250,7 @@ test('deleting an account removes its events, and their invite links stop workin
   await page.getByRole('dialog').getByRole('button', { name: 'Delete account' }).click();
   await expect(page.getByText('Account deleted')).toBeVisible();
   await page.goto(link);
-  await expect(page.getByRole('heading', { name: 'We can’t find that event' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Can’t find that event' })).toBeVisible();
 });
 
 test('the organizer can correct the name and note of an event, and invitees see the change', async ({ page, browser }) => {
@@ -359,7 +359,7 @@ test('an organizer with more than a hundred events sees them all, and deleting t
 test('a link with a stray percent sign leads to a plain message, not a stuck page', async ({ page }) => {
   for (const hash of ['#/e/%', '#/e/%E0%A4%A', '#/%zz']) {
     await page.goto(hash);
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/nothing at this address|can’t find that event/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/nothing at this address|Can’t find that event/);
   }
 });
 

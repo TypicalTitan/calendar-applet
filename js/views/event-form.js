@@ -1,6 +1,6 @@
 // Create an event: a name, the days, the hours each day, the size of the blocks, and a time zone.
 
-import { h, field, uid, touchFirst } from '../ui/dom.js';
+import { h, field, uid, touchFirst, setBusy, isBusy } from '../ui/dom.js';
 import { createDatePicker } from '../ui/calendar.js';
 import { createEvent, getAccount } from '../backend.js';
 import { verifyPanel } from './verify.js';
@@ -38,8 +38,9 @@ export function newEventView({ navigate }) {
     hint: 'Your friends see it under the name.',
   });
 
+  const keysId = uid('day-keys');
   const picker = createDatePicker({
-    min: today, max: addDays(today, 365), limit: LIMITS.maxDays, label: 'Days',
+    min: today, max: addDays(today, 365), limit: LIMITS.maxDays, label: 'Days', describedBy: keysId,
     onChange: (next) => { dates = next; datesError.hidden = true; },
   });
   const datesLabel = uid('days');
@@ -57,7 +58,8 @@ export function newEventView({ navigate }) {
   const fromField = field({ label: 'From', control: from });
   const toField = field({ label: 'To', control: to });
   const timeError = h('span', { class: 'error', role: 'alert', hidden: true });
-  const overnight = h('span', { class: 'hint', hidden: true }, 'The end is before the start, so each day runs past midnight.');
+  // Always in the page, so that filling it in is read out; it takes no room while it is empty.
+  const overnight = h('span', { class: 'hint', role: 'status' });
 
   const slotName = uid('slot');
   const slot = h('div', { class: 'segmented', role: 'radiogroup', 'aria-labelledby': `${slotName}-label` },
@@ -87,7 +89,9 @@ export function newEventView({ navigate }) {
   }
 
   // An end at or before the start means each day runs past midnight. Say so when that is picked.
-  const noteOvernight = () => { overnight.hidden = Number(to.value) > Number(from.value); };
+  const noteOvernight = () => {
+    overnight.textContent = Number(to.value) > Number(from.value) ? '' : 'The end is before the start, so each day runs past midnight.';
+  };
 
   for (const control of [from, to, zoneSelect]) control.addEventListener('change', () => { timeError.hidden = true; noteOvernight(); });
   slot.addEventListener('change', () => { timeError.hidden = true; });
@@ -97,6 +101,8 @@ export function newEventView({ navigate }) {
     h('fieldset', { class: 'part stack' },
       h('legend', { class: 'legend', id: datesLabel }, 'Days'),
       h('p', { class: 'muted small' }, touchFirst() ? 'Tap the days you want.' : 'Click the days you want. Drag to add several.'),
+      // Shown once the calendar is being used from the keyboard (see .keys in the stylesheet).
+      h('p', { class: 'keys muted small', id: keysId }, 'Keyboard: arrows move, Space picks a day, Shift+Space picks a run, Page Up and Page Down change month.'),
       picker.el, datesError),
     h('fieldset', { class: 'part stack' },
       h('legend', { class: 'legend' }, 'Time each day'),
@@ -113,7 +119,7 @@ export function newEventView({ navigate }) {
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (submit.disabled) return;
+    if (isBusy(submit)) return;
     const checked = validateEvent(read());
     title.setError(checked.errors.title || '');
     note.setError(checked.errors.description || '');
@@ -131,14 +137,14 @@ export function newEventView({ navigate }) {
       first?.focus();
       return;
     }
-    submit.disabled = true;
+    setBusy(submit, true);
     try {
       const id = await createEvent(checked.value);
       navigate(`/e/${id}/results`);
     } catch (err) {
       error.textContent = err.message;
       error.hidden = false;
-      submit.disabled = false;
+      setBusy(submit, false);
     }
   });
 

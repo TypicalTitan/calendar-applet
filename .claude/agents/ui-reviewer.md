@@ -65,7 +65,7 @@ These came out of the first review. Do not report them as problems, and say so i
 - One typeface. Wide and heavy for names of things, narrow for times.
 - One filled button per page. Everything secondary is a quiet button or a plain underlined link, with no icon beside the word.
 - The event page shows the link, the grid, the best times and who answered. Downloads and close, edit, delete are a line of links at the bottom. Until someone answers it shows only the link and the empty grid.
-- The invite page offers no account, says nothing about time zones unless the visitor's clock differs, and gives one instruction (tap or click, whichever fits the device).
+- The invite page offers no account, says nothing about time zones unless the visitor's clock differs, and gives one instruction (tap or click, whichever fits the device). The line of keyboard keys is always in the page for screen readers and shows only while a grid is being used from the keyboard.
 - Words: "you" and "your friends"; "the person who made this event" when talking to a friend; "answers", "times", "blocks", "hours". Not organizer, invitee, response, slot, window, export, manage.
 
 ## How to review

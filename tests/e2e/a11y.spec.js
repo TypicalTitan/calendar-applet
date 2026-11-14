@@ -70,3 +70,52 @@ test('the setup page passes automated accessibility checks', async ({ browser, b
   await check(page, 'setup');
   await context.close();
 });
+
+test('the timetable’s lines can be seen against the paper in both colour schemes', async ({ page }) => {
+  await signUp(page);
+  const { link } = await createEvent(page, { slot: '30 minutes' });
+  await page.goto(link);
+  await expect(page.getByRole('button', { name: 'Save my times' })).toBeVisible();
+  for (const scheme of ['light', 'dark']) {
+    await page.emulateMedia({ colorScheme: scheme });
+    const ratios = await page.evaluate(() => {
+      // A canvas turns whatever form the browser reports a colour in into plain red, green, blue.
+      const rgb = (colour) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1; canvas.height = 1;
+        const ink = canvas.getContext('2d', { willReadFrequently: true });
+        ink.fillStyle = colour;
+        ink.fillRect(0, 0, 1, 1);
+        return [...ink.getImageData(0, 0, 1, 1).data].slice(0, 3);
+      };
+      const light = (colour) => {
+        const [r, g, b] = rgb(colour).map((v) => (v / 255 <= 0.03928 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4));
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const contrast = (a, b) => {
+        const [hi, lo] = [light(a), light(b)].sort((x, y) => y - x);
+        return (hi + 0.05) / (lo + 0.05);
+      };
+      const rows = [...document.querySelectorAll('.tt-row')];
+      const cell = rows.find((row, n) => n > 0 && !row.classList.contains('is-hour')).querySelector('.tt-cell');
+      const style = getComputedStyle(cell);
+      return { blocks: contrast(style.borderTopColor, style.backgroundColor), days: contrast(style.borderLeftColor, style.backgroundColor) };
+    });
+    expect(ratios.blocks, `${scheme}: the line between two blocks`).toBeGreaterThanOrEqual(3);
+    expect(ratios.days, `${scheme}: the line between two days`).toBeGreaterThanOrEqual(3);
+  }
+});
+
+test('in forced colours, both lines of a pressed name can be read', async ({ page, browser, browserName }) => {
+  test.skip(browserName !== 'chromium', 'forced colours can only be emulated in Chromium');
+  await signUp(page);
+  const { days, link } = await createEvent(page);
+  await (await answerAsGuest(browser, link, 'Ana', [`${days[0].cell}, 9:00 AM`])).context.close();
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await page.emulateMedia({ forcedColors: 'active' });
+  const ana = page.getByRole('region', { name: '1 answer' }).getByRole('button', { name: /^Ana/ });
+  await ana.click();
+  await expect(ana).toHaveAttribute('aria-pressed', 'true');
+  const [name, detail] = await ana.evaluate((el) => [getComputedStyle(el.querySelector('.n')).color, getComputedStyle(el.querySelector('.m')).color]);
+  expect(detail).toBe(name);
+});

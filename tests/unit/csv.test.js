@@ -51,7 +51,7 @@ const responses = [
 test('gridRows has one row per time slot and one column per person', () => {
   const rows = gridRows(event, buildSlots(event), responses, 'America/New_York');
   assert.deepEqual(rows, [
-    ['Date', 'Day', 'Start', 'End', 'Time zone', 'Start (UTC)', 'Available', 'Responses', 'Ana', "'=Ben"],
+    ['Date', 'Day', 'Start', 'End', 'Time zone', 'Start (UTC)', 'Free', 'Answers', 'Ana', "'=Ben"],
     ['2026-11-21', 'Sat', '09:00', '10:00', 'America/New_York', '2026-11-21T14:00:00Z', 1, 2, 1, 0],
     ['2026-11-21', 'Sat', '10:00', '11:00', 'America/New_York', '2026-11-21T15:00:00Z', 2, 2, 1, 1],
     ['2026-11-22', 'Sun', '09:00', '10:00', 'America/New_York', '2026-11-22T14:00:00Z', 0, 2, 0, 0],

@@ -32,9 +32,13 @@ export function timeRange(startMinute, endMinute) {
   return `${timeLabel(startMinute)}–${timeLabel(endMinute)}`;
 }
 
-/** "9 AM to 5 PM": the hours of an event, said the short way. */
+/**
+ * "9 AM to 5 PM": the hours of an event, said the short way. Where clocks run to 24 a bare
+ * "09 to 17" would not read as times, so those keep their minutes: "09:00 to 17:00".
+ */
 export function hoursRange(startMinute, endMinute) {
-  return `${hourLabel(startMinute)} to ${hourLabel(endMinute)}`;
+  const label = fmt({ hour: 'numeric' }).resolvedOptions().hour12 ? hourLabel : timeLabel;
+  return `${label(startMinute)} to ${label(endMinute)}`;
 }
 
 /** "Saturday, November 21" */

@@ -151,7 +151,7 @@ function friendly(error, fallback) {
     return new FriendlyError('That email and password don’t match an account.', code);
   }
   if (code === 'auth/too-many-requests') {
-    return new FriendlyError('Too many attempts. Wait a few minutes and try again, or reset your password.', code);
+    return new FriendlyError('Too many attempts. Wait a few minutes and try again.', code);
   }
   if (code === 'auth/email-already-in-use' || code === 'auth/credential-already-in-use') {
     return new FriendlyError('That email can’t be used for a new account. If it’s yours, sign in or reset your password.', code);
@@ -252,7 +252,7 @@ export function signIn({ email, password }) {
   return attempt(async () => {
     await signInWithEmailAndPassword(auth, email, password);
     refreshUser();
-  });
+  }, { byCode: { 'auth/too-many-requests': 'Too many attempts. Wait a few minutes and try again, or reset your password.' } });
 }
 
 export function signOut() {

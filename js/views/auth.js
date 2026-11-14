@@ -1,25 +1,25 @@
 // Sign in, create an account, and ask for a password reset.
 
-import { h, field } from '../ui/dom.js';
+import { h, field, setBusy, isBusy } from '../ui/dom.js';
 import { signIn, signUp, requestPasswordReset, passwordProblem, PASSWORD_MIN } from '../backend.js';
 import { tidyLine } from '../core/text.js';
 
 const input = (props) => h('input', { class: 'input', ...props });
 
-/** Runs an async submit handler with the button disabled, showing any error in `errorEl`. */
+/** Runs an async submit handler with the button marked busy, showing any error in `errorEl`. */
 function submitter(form, button, errorEl, work) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (button.disabled) return;
+    if (isBusy(button)) return;
     errorEl.hidden = true;
-    button.disabled = true;
+    setBusy(button, true);
     try {
       await work();
     } catch (error) {
       errorEl.textContent = error.message || 'Something went wrong. Try again.';
       errorEl.hidden = false;
     } finally {
-      button.disabled = false;
+      setBusy(button, false);
     }
   });
 }

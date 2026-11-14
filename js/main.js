@@ -20,7 +20,7 @@ const appName = config.appName || 'Overlap';
 const root = document.getElementById('app');
 
 const routes = [
-  { pattern: /^\/$/, view: homeView },
+  { pattern: /^\/$/, view: homeView, forAccounts: true },
   { pattern: /^\/sign-in$/, view: signInView, signedOutOnly: true },
   { pattern: /^\/sign-up$/, view: signUpView, signedOutOnly: true },
   { pattern: /^\/reset$/, view: resetView },
@@ -159,6 +159,7 @@ async function start() {
     replace(nav);
     nav.hidden = true;
     const page = setupView({ appName });
+    main.className = 'main main-narrow';
     replace(main, page.el);
     document.title = `${page.title} · ${appName}`;
     return;
@@ -173,6 +174,7 @@ async function start() {
       title: 'The site couldn’t start',
       body: 'Its Firebase settings look wrong. If this is your site, check the values in js/config.js against the Firebase console.',
     });
+    main.className = 'main main-narrow';
     replace(main, page.el);
     return;
   }

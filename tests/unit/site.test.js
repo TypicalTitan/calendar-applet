@@ -94,12 +94,17 @@ test('a browser too old for the site is told so', () => {
 });
 
 test('the 404 page is stamped whatever the repository is called, including a site on its own domain', () => {
+  // Whatever prefix the committed page has now (the owner may have renamed the repository).
+  const current = read('404.html').match(/href="([^"]*)\/css\/app\.css"/)[1];
   for (const [prefix, expected] of [['/my-renamed-repo', '/my-renamed-repo/css-abc12345/app.css'], ['', '/css-abc12345/app.css']]) {
     const copy = mkdtempSync(join(tmpdir(), 'site-src-'));
     const out = mkdtempSync(join(tmpdir(), 'site-'));
     try {
-      cpSync(root, copy, { recursive: true, filter: (path) => !/node_modules|\.git|\.claude|_site|test-results/.test(path) });
-      const page = readFileSync(join(copy, '404.html'), 'utf8').replaceAll('/calendar-applet', prefix);
+      // Only the site's own files, so the test does not depend on where the checkout lives.
+      for (const entry of ['index.html', '404.html', 'firestore.rules', 'assets', 'css', 'js']) {
+        cpSync(join(root, entry), join(copy, entry), { recursive: true });
+      }
+      const page = readFileSync(join(copy, '404.html'), 'utf8').replaceAll(`${current}/`, `${prefix}/`);
       writeFileSync(join(copy, '404.html'), page);
       assembleSite({ root: copy, out, stamp: 'abc12345' });
       assert.ok(readFileSync(join(out, '404.html'), 'utf8').includes(`href="${expected}"`), prefix || '(own domain)');

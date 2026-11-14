@@ -378,10 +378,13 @@ export function createHeatGrid({ event, slots, zone, label, onSelect = () => {} 
   const tip = h('div', { class: 'tt-tip', hidden: true, 'aria-hidden': 'true' });
   const root = h('div', { class: 'tt tt-heat' }, scroller, tip);
 
-  const describe = (i) => (person ? (person[i] ? 'free' : 'not free') : `${counts[i]} of ${total} free`);
+  // Before anyone has answered there is nothing to pick or to count.
+  const empty = () => !person && total === 0;
+  const describe = (i) => (person ? (person[i] ? 'free' : 'not free') : empty() ? 'no answers yet' : `${counts[i]} of ${total} free`);
 
   function render() {
     root.classList.toggle('is-person', Boolean(person));
+    root.classList.toggle('is-empty', empty());
     const scale = heatScale(person ? 1 : counts.reduce((a, b) => Math.max(a, b), 0));
     for (let i = 0; i < count; i++) {
       const cell = cells[i];
@@ -403,6 +406,7 @@ export function createHeatGrid({ event, slots, zone, label, onSelect = () => {} 
   }
 
   function select(index) {
+    if (empty()) return;
     selected = index === selected ? -1 : index;
     if (index >= 0) setFocus(index, false);
     render();
@@ -410,7 +414,7 @@ export function createHeatGrid({ event, slots, zone, label, onSelect = () => {} 
   }
 
   function showTip(index) {
-    if (index < 0) { tip.hidden = true; return; }
+    if (index < 0 || empty()) { tip.hidden = true; return; }
     const cell = cells[index].getBoundingClientRect();
     const box = root.getBoundingClientRect();
     tip.textContent = describe(index);
@@ -457,6 +461,7 @@ export function createHeatGrid({ event, slots, zone, label, onSelect = () => {} 
       counts = next.counts;
       total = next.total;
       person = next.person || null;
+      if (empty()) selected = -1; // the last answer went: nothing stays picked
       render();
     },
     setZone(next) { mount(next); },

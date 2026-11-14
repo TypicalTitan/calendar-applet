@@ -30,7 +30,7 @@ test('an organizer creates an event, invitees answer by link, and the organizer 
   expect(file.suggestedFilename()).toBe('board-game-weekend-grid.csv');
   const csv = await readFile(await file.path(), 'utf8');
   const lines = csv.replace(/^\uFEFF/, '').trim().split('\r\n');
-  expect(lines[0]).toBe('Date,Day,Start,End,Time zone,Start (UTC),Available,Responses,Ana,Ben');
+  expect(lines[0]).toBe('Date,Day,Start,End,Time zone,Start (UTC),Free,Answers,Ana,Ben');
   expect(lines).toHaveLength(1 + 3 * 8);
   expect(lines[1]).toMatch(new RegExp(`^${days[0].iso},\\w{3},09:00,10:00,America/New_York,[^,]+,1,2,1,0$`));
   expect(lines[2]).toMatch(new RegExp(`^${days[0].iso},\\w{3},10:00,11:00,America/New_York,[^,]+,2,2,1,1$`));
@@ -168,7 +168,7 @@ test('one organizer cannot open another organizer\'s results', async ({ page, br
 
 test('an unknown invite link says so plainly', async ({ page }) => {
   await page.goto('#/e/doesNotExist0000000x');
-  await expect(page.getByRole('heading', { name: 'We can’t find that event' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Can’t find that event' })).toBeVisible();
 });
 
 test('a site with no Firebase settings shows setup steps instead of a broken page', async ({ browser, baseURL }) => {

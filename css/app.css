@@ -190,11 +190,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
   color: var(--ink-3); font-size: 0.875rem; border-top: 1px solid var(--rule);
 }
 
-.stack > * + * { margin-top: var(--gap, 1rem); }
+/* Each stack names its own gap, so one nested inside a roomier stack does not inherit that. */
+.stack { --gap: 1rem; }
+.stack > * + * { margin-top: var(--gap); }
 .stack-l { --gap: 1.75rem; }
 .stack-s { --gap: 0.5rem; }
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
-.row-between { justify-content: space-between; }
 
 .page-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.75rem 1.5rem; margin-bottom: 1.5rem; }
 .page-head p { color: var(--ink-2); margin-top: 0.35rem; max-width: 60ch; }
@@ -230,7 +231,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn:hover { background: color-mix(in oklab, var(--button), var(--page) 14%); border-color: color-mix(in oklab, var(--button), var(--page) 14%); }
 .btn:active { transform: translateY(1px); }
 .btn[disabled], .btn[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
-.btn svg { width: 18px; height: 18px; flex: none; }
 
 .btn-quiet { background: transparent; color: var(--ink); border-color: var(--rule-strong); }
 .btn-quiet:hover { background: var(--wash); border-color: var(--ink-2); }
@@ -242,7 +242,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn-block { width: 100%; }
 
 .linklike {
-  border: 0; background: none; padding: 0; cursor: pointer; font-weight: 600;
+  border: 0; background: none; padding: 0; cursor: pointer; font-weight: 600; text-align: left;
   text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.18em;
 }
 .linklike:hover { text-decoration-thickness: 2px; }
@@ -253,6 +253,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border: 1px solid transparent; border-radius: var(--radius); background: none; cursor: pointer; color: var(--ink-2);
 }
 .icon-btn:hover { background: var(--wash); color: var(--ink); }
+.icon-btn[aria-disabled="true"] { opacity: 0.4; cursor: not-allowed; background: none; }
 .icon-btn svg { width: 20px; height: 20px; }
 
 /* ---------------------------------------------------------------- forms */
@@ -261,8 +262,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .field > label, .field > .label, .legend {
   display: block; font-weight: 650; margin-bottom: 0.35rem;
 }
-.field .hint { display: block; color: var(--ink-2); font-size: 0.875rem; margin-top: 0.35rem; }
-.field .error, .form-error { display: block; color: var(--danger); font-size: 1rem; font-weight: 550; margin-top: 0.35rem; }
+.field .hint, fieldset > .hint { display: block; color: var(--ink-2); font-size: 0.875rem; margin-top: 0.35rem; }
+.field .error, fieldset > .error, .form-error { display: block; color: var(--danger); font-size: 1rem; font-weight: 550; margin-top: 0.35rem; }
 .optional { color: var(--ink-3); font-weight: 420; }
 
 .input, .select, .textarea {
@@ -278,7 +279,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 legend { padding: 0; }
-fieldset.part { border-top: 1px solid var(--rule-strong); padding-top: 1.25rem; }
 fieldset.part > legend { float: left; width: 100%; font-size: 1.25rem; font-stretch: var(--wide); font-weight: 720; letter-spacing: -0.01em; margin-bottom: 0.5rem; }
 fieldset.part > legend + * { clear: both; margin-top: 0; }
 
@@ -287,7 +287,7 @@ fieldset.part > legend + * { clear: both; margin-top: 0; }
 .segmented { display: inline-flex; flex-wrap: wrap; border: 1.5px solid var(--ink-3); border-radius: var(--radius); background: var(--paper); }
 .segmented label:first-child { border-radius: 2px 0 0 2px; }
 .segmented label:last-child { border-radius: 0 2px 2px 0; }
-.segmented label { position: relative; display: inline-flex; align-items: center; min-height: 41px; padding: 0 0.9rem; cursor: pointer; font-weight: 600; }
+.segmented label { position: relative; display: inline-flex; align-items: center; min-height: 41px; padding: 0 0.7rem; cursor: pointer; font-weight: 600; }
 .segmented label + label { border-left: 1.5px solid var(--ink-3); }
 .segmented input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
 .segmented label:has(input:checked) { background: var(--button); color: var(--button-text); }
@@ -298,7 +298,8 @@ fieldset.part > legend + * { clear: both; margin-top: 0; }
   padding: 0.75rem 1rem; border-radius: var(--radius);
   background: var(--notice-wash); border: 1px solid var(--notice-rule);
 }
-.banner-plain { background: var(--wash); border-color: var(--rule); }
+/* A plain remark is not a box: it sits straight on the page. */
+.banner-plain { background: none; border: 0; padding: 0; }
 .banner-danger { background: var(--danger-wash); border-color: color-mix(in oklab, var(--danger), var(--paper) 55%); }
 .banner p { flex: 1 1 16rem; min-width: 0; }
 .banner, dialog p, .people .who { overflow-wrap: anywhere; }
@@ -306,12 +307,19 @@ fieldset.part > legend + * { clear: both; margin-top: 0; }
 .status-line { min-height: 1.5rem; color: var(--ink-2); overflow-wrap: anywhere; }
 /* Stays in the page for screen readers, but takes no room until it has something to say. */
 .status-line:empty { min-height: 0; }
-.stack > .status-line:empty { margin-top: 0; }
+.stack > .status-line:empty, .stack > [role="status"]:empty { margin-top: 0; }
+
+/* Which keys work in a grid. Always in the page, where the grid's description points at it;
+   on show only while a cell of that grid has the keyboard, so nobody else has to read it. */
+:not(:has(.tt-cell:focus-visible, .cal-day:focus-visible)) > .keys {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
 .status-line.is-good { color: var(--ink); font-weight: 600; }
 
 /* ---------------------------------------------------------------- the timetable */
 
-.tt { --tt-line: var(--rule-strong); position: relative; }
+.tt { --tt-line: var(--ink-3); position: relative; }
 .tt-scroll {
   /* One scroll box for both directions, so the day headings and the time column stay in view. */
   overflow: auto; overscroll-behavior-x: contain; border-radius: var(--radius);
@@ -351,7 +359,7 @@ fieldset.part > legend + * { clear: both; margin-top: 0; }
   font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); line-height: 1;
   border-top: 1px solid transparent;
 }
-.tt-row.is-hour .tt-time { border-top-color: var(--ink-3); }
+.tt-row.is-hour .tt-time { border-top-color: var(--ink-2); }
 .tt-row:first-child .tt-time { border-top-color: transparent; }
 .tt-row.is-nextday .tt-time { border-top: 1.5px solid var(--ink); }
 .tt-time .next { display: block; margin-top: 2px; font-size: 0.6875rem; font-weight: 500; }
@@ -361,22 +369,22 @@ fieldset.part > legend + * { clear: both; margin-top: 0; }
   position: relative;
   height: var(--row-h); min-width: var(--col-w); padding: 0;
   border-left: 1px solid var(--tt-line);
-  border-top: 1px solid color-mix(in oklab, var(--tt-line), var(--paper) 35%);
+  border-top: 1px solid color-mix(in oklab, var(--tt-line), var(--paper) 25%);
   background: var(--paper);
   cursor: pointer;
   touch-action: pan-x pan-y;
   -webkit-tap-highlight-color: transparent;
 }
-.tt-row.is-hour .tt-cell { border-top-color: var(--ink-3); }
+.tt-row.is-hour .tt-cell { border-top-color: var(--ink-2); }
 .tt-row:first-child .tt-cell { border-top-color: transparent; }
 .tt-row.is-nextday .tt-cell { border-top: 1.5px solid var(--ink); }
 .tt-cell:last-child { border-right: 1px solid var(--tt-line); }
-.tt-row:last-child .tt-cell { border-bottom: 1px solid var(--ink-3); }
+.tt-row:last-child .tt-cell { border-bottom: 1px solid var(--ink-2); }
 
 /* Keyboard focus: an ink ring, a paper band, then the focus colour. Whatever the cell is filled
    with, at least one of the three stands out against it. (The long selector outranks the
-   fill rules below without resorting to !important.) */
-.tt .tt-table .tt-cell:focus-visible {
+   fill rules below, including the shading on the results grid, without resorting to !important.) */
+.tt .tt-table .tt-row .tt-cell:focus-visible {
   outline: 2px solid var(--ink); outline-offset: -2px; z-index: 1;
   box-shadow: inset 0 0 0 5px var(--paper), inset 0 0 0 7px var(--focus);
 }
@@ -400,9 +408,11 @@ fieldset.part > legend + * { clear: both; margin-top: 0; }
   box-shadow: inset 0 0 0 1px var(--paper);
 }
 @media (hover: hover) {
-  .tt-heat .tt-cell:hover { outline: 2px solid var(--ink-2); outline-offset: -2px; z-index: 1; }
+  .tt-heat:not(.is-empty) .tt-cell:hover { outline: 2px solid var(--ink-2); outline-offset: -2px; z-index: 1; }
 }
-.tt-heat .tt-cell[aria-selected="true"] { outline: 2px solid var(--ink); outline-offset: -2px; z-index: 1; box-shadow: inset 0 0 0 5px var(--paper); }
+/* A picked time: an ink ring and a paper band (written to outrank the shading rule above). */
+.tt-heat .tt-table .tt-row .tt-cell[aria-selected="true"]:not(:focus-visible) { outline: 2px solid var(--ink); outline-offset: -2px; z-index: 1; box-shadow: inset 0 0 0 5px var(--paper); }
+.tt-heat.is-empty .tt-cell { cursor: default; }
 .tt-heat .tt-cell.is-lit::after {
   content: ""; position: absolute; inset: 3px; border: 2px solid var(--ink); border-radius: 2px; pointer-events: none;
   box-shadow: 0 0 0 2px var(--paper), inset 0 0 0 2px var(--paper);
@@ -412,7 +422,7 @@ fieldset.part > legend + * { clear: both; margin-top: 0; }
 .tt-heat .tt-cell.is-all::before, .sw-all::before {
   content: ""; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--paper);
 }
-.legend-all { display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.5rem; }
+.legend-all { display: inline-flex; align-items: center; gap: 0.35rem; }
 .sw-all { position: relative; display: inline-block; width: 26px; height: 16px; border-radius: 2px; background: var(--heat-hi); }
 .sw-all::before { top: 4px; right: 4px; }
 
@@ -488,7 +498,7 @@ fieldset.part > legend + * { clear: both; margin-top: 0; }
 /* The negative margin puts the names in line with the heading above; the padding is only there
    to give the hover and pressed shading some room. */
 .people .who {
-  flex: 1; min-width: 0; display: grid; text-align: left; padding: 0.5rem 0.4rem; margin-left: -0.4rem; border: 0; background: none; cursor: pointer; border-radius: var(--radius);
+  flex: 1; min-width: 0; display: grid; align-self: stretch; align-content: start; text-align: left; padding: 0.5rem 0.4rem; margin-left: -0.4rem; border: 0; background: none; cursor: pointer; border-radius: var(--radius);
 }
 .people .who:hover { background: var(--wash); }
 .people .who[aria-pressed="true"] { background: var(--marker-soft); }
@@ -508,6 +518,7 @@ fieldset.part > legend + * { clear: both; margin-top: 0; }
 .detail .names b { color: var(--ink); font-weight: 650; }
 
 .table-wrap { overflow: auto; max-height: 32rem; border: 1px solid var(--rule); border-radius: var(--radius); }
+.results-grid .table-wrap { border: 0; border-radius: 0; } /* already inside the sheet's frame */
 .data-table { border-collapse: collapse; min-width: 100%; font-size: 0.875rem; font-variant-numeric: tabular-nums; background: var(--paper); }
 .data-table th, .data-table td { padding: 0.35rem 0.6rem; border-bottom: 1px solid var(--rule); text-align: left; white-space: nowrap; }
 .data-table thead th { position: sticky; top: 0; background: var(--wash); font-weight: 650; z-index: 1; }
@@ -536,7 +547,7 @@ pre code { background: none; padding: 0; }
 
 .hero { display: grid; gap: 2rem 3rem; grid-template-columns: minmax(0, 1fr); align-items: start; padding: 1.5rem 0 1rem; }
 @media (min-width: 58rem) {
-  .hero { grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); }
+  .hero { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
 }
 .hero h1 {
   font-size: clamp(2.4rem, 1.6rem + 2.2vw, 3.25rem);
@@ -548,10 +559,9 @@ pre code { background: none; padding: 0; }
 .hero .aside { margin-top: 0.6rem; }
 .demo { --col-w: 48px; }
 .demo .tt-table { --row-h: 30px; }
-.demo .pairgrid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
+.demo .pairgrid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); align-items: end; }
 .demo h2 { font-size: 1rem; font-stretch: 100%; font-weight: 650; margin-bottom: 0.4rem; }
 .demo .legend-scale { margin-top: 0.9rem; }
-.results-grid .legend-scale { min-width: 0; }
 .demo .readout { margin-top: 1rem; padding-top: 0.85rem; border-top: 1px solid var(--rule); min-height: 3.2rem; }
 .demo .readout b { font-weight: 720; }
 .demo .friends { color: var(--ink-2); font-size: 0.875rem; margin-top: 0.3rem; }
@@ -567,7 +577,7 @@ dialog::backdrop { background: rgb(10 14 22 / 0.5); }
 dialog h2 { margin-bottom: 0.5rem; }
 dialog .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.6rem; margin-top: 1.25rem; }
 @media (max-width: 26rem) {
-  dialog .actions { flex-direction: column-reverse; align-items: stretch; }
+  dialog .actions { flex-direction: column; align-items: stretch; }
 }
 
 .toasts { position: fixed; left: 50%; bottom: 1.25rem; transform: translateX(-50%); z-index: 40; display: grid; gap: 0.5rem; justify-items: center; width: max-content; max-width: calc(100vw - 2rem); pointer-events: none; }
@@ -597,6 +607,8 @@ dialog .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap
   .tt-heat .tt-cell, .legend-scale .sw, .sw-all { forced-color-adjust: none; }
   .cal-day[aria-selected="true"], .segmented label:has(input:checked),
   .people .who[aria-pressed="true"], .best button[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
+  /* Their second lines would otherwise keep the site's grey, which may not show on Highlight. */
+  .people .who[aria-pressed="true"] .m, .best button[aria-pressed="true"] .c { color: inherit; }
 }
 
 @media print {
