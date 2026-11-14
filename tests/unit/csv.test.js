@@ -113,6 +113,14 @@ test('safeText also disarms a formula hidden after a semicolon', () => {
   assert.equal(safeText('Smith; Jr.'), 'Smith; Jr.');
 });
 
+test('safeText disarms a formula that follows a semicolon and a quote', () => {
+  // A spreadsheet that splits on semicolons and is easy-going about quotes drops the quote
+  // and would otherwise be left with a cell that starts with "=".
+  assert.equal(safeText('q;"=2+3;z'), 'q;"\'=2+3;z');
+  assert.equal(safeText('x; " =1+1&";y'), 'x; " \'=1+1&";y');
+  assert.equal(safeText('He said; "no"'), 'He said; "no"');
+});
+
 test('columnNames numbers repeated names, with or without the spreadsheet escape', () => {
   const people = [{ name: '=Ben' }, { name: 'Sam' }, { name: 'Sam' }];
   assert.deepEqual(columnNames(people), ["'=Ben", 'Sam', 'Sam (2)']);

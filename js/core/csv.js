@@ -20,14 +20,16 @@ export function csvCell(value) {
 
 const FORMULA_START = '=+\\-@\\uFF1D\\uFF0B\\uFF0D\\uFF20';
 const STARTS_FORMULA = new RegExp(`^[${FORMULA_START}]`);
-const FORMULA_AFTER_SEMICOLON = new RegExp(`;(\\s*)(?=[${FORMULA_START}])`, 'g');
+const FORMULA_AFTER_SEMICOLON = new RegExp(`;([\\s"]*)(?=[${FORMULA_START}])`, 'g');
 
 /**
  * Makes text typed by a person safe to put in a cell. Line breaks and tabs become spaces, and a
  * character that would make a spreadsheet treat the cell as a formula (including the full-width
  * look-alikes) gets an apostrophe in front, which spreadsheets read as "plain text" (OWASP "CSV
  * injection"). That applies at the start of the text and after every semicolon: spreadsheets in
- * many countries split CSV lines on semicolons, so each one can begin a new cell.
+ * many countries split CSV lines on semicolons, so each one can begin a new cell. Spaces and
+ * quotes between the semicolon and the character are stepped over, because some spreadsheets
+ * drop them when they split.
  */
 export function safeText(text) {
   const flat = String(text).replace(/[\t\r\n]+/g, ' ').trim().replace(FORMULA_AFTER_SEMICOLON, ";$1'");
