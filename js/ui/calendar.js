@@ -129,6 +129,7 @@ export function createDatePicker({ value = [], min, max, limit, label, onChange 
   });
   grid.addEventListener('pointerup', (e) => {
     lastPointerAt = performance.now();
+    if (e.pointerType !== 'touch' && e.button !== 0) return; // a right or middle click is not a pick
     if (drag && e.pointerId === drag.pointerId) {
       const { from, to, adding } = drag;
       drag = null;

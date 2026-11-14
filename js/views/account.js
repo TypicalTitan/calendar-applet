@@ -19,7 +19,7 @@ export function accountView({ navigate }) {
     name.setError(cleaned ? '' : 'Enter your name.');
     if (!cleaned) return;
     saveName.disabled = true;
-    try { await changeName(cleaned); toast('Name saved'); } catch (error) { toast(error.message); }
+    try { await changeName(cleaned); toast('Name saved'); } catch (error) { toast(error.message, { error: true }); }
     saveName.disabled = false;
   });
 
@@ -35,7 +35,7 @@ export function accountView({ navigate }) {
   const resend = h('button', { type: 'button', class: 'btn btn-quiet btn-small' }, 'Send the email again');
   resend.addEventListener('click', async () => {
     resend.disabled = true;
-    try { await resendVerification(); toast('Confirmation email sent'); } catch (error) { toast(error.message); }
+    try { await resendVerification(); toast('Confirmation email sent'); } catch (error) { toast(error.message, { error: true }); }
     setTimeout(() => { resend.disabled = false; }, 60_000);
   });
   const recheck = h('button', { type: 'button', class: 'btn btn-quiet btn-small' }, 'I’ve confirmed');
@@ -44,7 +44,7 @@ export function accountView({ navigate }) {
       const verified = await recheckVerification();
       drawEmail(verified);
       toast(verified ? 'Email confirmed' : 'Not confirmed yet. Open the link in the email first.');
-    } catch (error) { toast(error.message); }
+    } catch (error) { toast(error.message, { error: true }); }
   });
   verifyActions.append(resend, recheck);
   drawEmail(account.verified);

@@ -24,7 +24,7 @@ export function slotName(event, slots, index, zone) {
   return `${longDate(wall.date)}, ${timeLabel(wall.minute)}`;
 }
 
-function buildTable({ event, slots, zone, label, multiselect }) {
+function buildTable({ event, slots, zone, label, multiselect, describedBy }) {
   const layout = describeGrid(event, slots, zone);
   const { perDay } = slots;
   const cells = new Array(slots.count);
@@ -80,6 +80,7 @@ function buildTable({ event, slots, zone, label, multiselect }) {
     role: 'grid',
     'aria-label': label,
     'aria-multiselectable': multiselect ? 'true' : null,
+    'aria-describedby': describedBy || null,
     'aria-rowcount': String(perDay + 1),
     'aria-colcount': String(layout.columns.length + 1),
   }, h('thead', null, headRow), body);
@@ -122,7 +123,7 @@ function moveTarget(key, index, perDay, days) {
  * ordinary swipe still scrolls the page. Keyboard: arrows move, Space or Enter switches a cell,
  * Shift+arrow carries the current cell's state to the next one.
  */
-export function createPaintGrid({ event, slots, zone, value, readOnly = false, label, onChange = () => {}, onPreview = () => {} }) {
+export function createPaintGrid({ event, slots, zone, value, readOnly = false, label, describedBy, onChange = () => {}, onPreview = () => {} }) {
   const { perDay, count } = slots;
   const days = event.dates.length;
   let bits = Uint8Array.from(value);
@@ -196,8 +197,13 @@ export function createPaintGrid({ event, slots, zone, value, readOnly = false, l
     if (moveFocus) cells[index].focus({ preventScroll: false });
   }
 
+  // While a drag is under way, Escape abandons it wherever the keyboard focus happens to be
+  // (usually still in the name box).
+  const onEscape = (e) => { if (e.key === 'Escape' && drag) { e.preventDefault(); finish(false); } };
+
   function begin(index, pointerId, touch) {
     drag = { anchor: index, current: index, mode: bits[index] ? 0 : 1, pointerId, touch };
+    document.addEventListener('keydown', onEscape, true);
     root.classList.add('is-painting');
     setFocus(index, false);
     render();
@@ -208,6 +214,7 @@ export function createPaintGrid({ event, slots, zone, value, readOnly = false, l
     if (!drag) return;
     if (commit) for (let i = 0; i < count; i++) if (inDrag(i)) bits[i] = drag.mode;
     drag = null;
+    document.removeEventListener('keydown', onEscape, true);
     root.classList.remove('is-painting');
     render();
     announcePreview();
@@ -288,7 +295,6 @@ export function createPaintGrid({ event, slots, zone, value, readOnly = false, l
   }
 
   function onKeyDown(e) {
-    if (e.key === 'Escape' && drag) { finish(false); return; }
     if (e.altKey || e.ctrlKey || e.metaKey) return;
     if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
@@ -307,7 +313,7 @@ export function createPaintGrid({ event, slots, zone, value, readOnly = false, l
   }
 
   function mount(displayZone) {
-    ({ table, cells } = buildTable({ event, slots, zone: displayZone, label, multiselect: true }));
+    ({ table, cells } = buildTable({ event, slots, zone: displayZone, label, multiselect: true, describedBy }));
     shown = new Uint8Array(count).fill(2);
     focusIndex = Math.min(focusIndex, Math.max(0, count - 1));
     if (count > 0) cells[focusIndex].tabIndex = 0;

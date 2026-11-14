@@ -27,7 +27,8 @@ const routes = [
   { pattern: /^\/events$/, view: eventsView, needsAccount: true },
   { pattern: /^\/new$/, view: newEventView, needsAccount: true },
   { pattern: /^\/account$/, view: accountView, needsAccount: true },
-  { pattern: /^\/e\/([^/]+)\/results$/, view: resultsView, needsAccount: true },
+  // Not "needsAccount": the page itself tells a signed-out visitor where the invite page is.
+  { pattern: /^\/e\/([^/]+)\/results$/, view: resultsView, forAccounts: true },
   { pattern: /^\/e\/([^/]+)$/, view: respondView },
 ];
 
@@ -42,6 +43,12 @@ export function navigate(path, { replaceEntry = false } = {}) {
   if (window.location.hash === target) render();
   else if (replaceEntry) window.location.replace(target);
   else window.location.hash = target;
+}
+
+/** Sends the visitor to sign in, and brings them back to this page afterwards. */
+function signInThenReturn() {
+  afterSignIn = currentPath();
+  navigate('/sign-in');
 }
 
 function currentPath() {
@@ -67,13 +74,13 @@ async function handleSignOut() {
     await signOut();
     toast('Signed out');
   } catch (error) {
-    toast(error.message);
+    toast(error.message, { error: true });
   }
 }
 
 function show(view, route, params) {
   if (current?.dispose) current.dispose();
-  const page = view({ params, navigate, appName, config });
+  const page = view({ params, navigate, appName, config, signInThenReturn });
   current = { route, dispose: page.dispose };
   main.className = `main${page.narrow ? ' main-narrow' : ''}`;
   replace(main, page.el);
@@ -171,7 +178,8 @@ async function start() {
     const route = current?.route;
     if (!route) return;
     // Re-route only when the change locks this page or makes it pointless; other pages stay put.
-    if ((route.needsAccount && !getAccount()) || (route.signedOutOnly && getAccount())) render();
+    // A page that shows one thing to its owner and another to everyone else is drawn again.
+    if ((route.needsAccount && !getAccount()) || (route.signedOutOnly && getAccount()) || route.forAccounts) render();
   });
   window.addEventListener('hashchange', render);
   render();

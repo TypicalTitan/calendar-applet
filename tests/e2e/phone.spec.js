@@ -71,8 +71,13 @@ test('a held drag that runs off the bottom of the screen keeps marking down to t
   await finger.move({ x: a.x, y: a.y + 40 });
   await finger.move({ x: a.x, y: page.viewportSize().height + 300 });
   await finger.end();
-  const marked = await page.locator('.tt-cell[aria-selected="true"]').count();
-  expect(marked).toBeGreaterThan(3);
+  // The marks run from the starting cell down to the last row that was on screen.
+  const marked = page.locator('.tt-cell[aria-selected="true"]');
+  expect(await marked.count()).toBeGreaterThan(1);
+  const last = await marked.last().boundingBox();
+  const scroller = await page.locator('.tt-scroll').boundingBox();
+  const edge = Math.min(page.viewportSize().height, scroller.y + scroller.height);
+  expect(last.y + last.height).toBeGreaterThan(edge - last.height * 1.5);
 });
 
 test('a quick swipe across the grid scrolls the page and marks nothing', async ({ page, browserName }) => {

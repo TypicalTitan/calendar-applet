@@ -467,3 +467,128 @@ test('if deleting an account is interrupted, the page says so and trying again f
   await expect(page.getByText('Account deleted')).toBeVisible({ timeout: 30_000 });
   expect(await countEventsOwnedBy(uid)).toBe(0);
 });
+
+test('someone sent the organizer\'s own results link is shown the way to the invite page', async ({ page, browser }) => {
+  await signUp(page);
+  const { title, link } = await createEvent(page);
+  const context = await browser.newContext(NY);
+  const visitor = await context.newPage();
+  await visitor.goto(`${link}/results`);
+  await expect(visitor.getByText('Only the organizer can see the answers')).toBeVisible();
+  await visitor.getByRole('link', { name: 'Add my times' }).click();
+  await expect(visitor.getByRole('heading', { name: title, level: 1 })).toBeVisible();
+  await expect(visitor.getByLabel('Your name')).toBeVisible();
+  await context.close();
+});
+
+test('what an invitee has typed and marked survives leaving the page and coming back', async ({ page, browser }) => {
+  await signUp(page);
+  const { days, link } = await createEvent(page);
+  const context = await browser.newContext(NY);
+  const guest = await context.newPage();
+  await guest.goto(link);
+  await guest.getByLabel('Your name').fill('Ana');
+  await guest.getByRole('gridcell', { name: `${days[0].cell}, 9:00 AM`, exact: true }).click();
+  await guest.getByRole('link', { name: 'Overlap' }).click();
+  await expect(guest.locator('.hero')).toBeVisible();
+  await guest.goBack();
+  await expect(guest.getByLabel('Your name')).toHaveValue('Ana');
+  await expect(guest.getByRole('gridcell', { name: `${days[0].cell}, 9:00 AM`, exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(guest.getByText('not saved yet', { exact: false })).toBeVisible();
+  await guest.getByRole('button', { name: 'Save my times' }).click();
+  await expect(guest.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible();
+  await guest.reload();
+  await expect(guest.getByText('not saved yet', { exact: false })).toHaveCount(0);
+  await context.close();
+});
+
+test('an invitee can still remove their answer after the event is closed', async ({ page, browser }) => {
+  await signUp(page);
+  const { days, link } = await createEvent(page);
+  const { context, page: guest } = await answerAsGuest(browser, link, 'Ana', [`${days[0].cell}, 9:00 AM`]);
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await page.getByRole('button', { name: 'Close responses' }).click();
+  await expect(page.getByText('Closed to new answers')).toBeVisible();
+  await guest.reload();
+  await expect(guest.getByText('This event is closed')).toBeVisible();
+  await guest.getByRole('button', { name: 'Remove my answer' }).click();
+  await guest.getByRole('dialog').getByRole('button', { name: 'Remove my answer' }).click();
+  await expect(guest.getByText('Your answer has been removed.')).toBeVisible({ timeout: 15_000 });
+  await context.close();
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await expect(page.getByText('No answers yet')).toBeVisible();
+});
+
+test('on the results page, choosing a person or a best time keeps the keyboard where it was', async ({ page, browser }) => {
+  await signUp(page);
+  const { days, link } = await createEvent(page);
+  await (await answerAsGuest(browser, link, 'Ana', [`${days[0].cell}, 9:00 AM`, `${days[0].cell}, 10:00 AM`])).context.close();
+  await (await answerAsGuest(browser, link, 'Ben', [`${days[0].cell}, 10:00 AM`])).context.close();
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await expect(page.getByText('2 answers')).toBeVisible();
+
+  const ana = page.getByRole('region', { name: '2 answers' }).getByRole('button', { name: /^Ana/ });
+  await ana.focus();
+  await page.keyboard.press('Enter');
+  await expect(ana).toHaveAttribute('aria-pressed', 'true');
+  await expect(ana).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(ana).toHaveAttribute('aria-pressed', 'false');
+  await expect(ana).toBeFocused();
+
+  const best = page.getByRole('region', { name: 'Best times' }).getByRole('button').first();
+  await best.focus();
+  await page.keyboard.press('Enter');
+  await expect(best).toHaveAttribute('aria-pressed', 'true');
+  await expect(best).toBeFocused();
+  // A refresh that brings nothing new leaves the chosen best time chosen.
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await expect(page.getByText('Up to date')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Best times' }).getByRole('button').first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Refresh' })).toBeFocused();
+});
+
+test('a right-click on a calendar day does not pick it', async ({ page }) => {
+  await signUp(page);
+  await page.goto('#/new');
+  await page.getByRole('button', { name: 'Next month' }).click();
+  const day = page.getByRole('gridcell', { name: nextMonthDays()[0].picker });
+  await day.click({ button: 'right' });
+  await expect(day).toHaveAttribute('aria-selected', 'false');
+  await day.click({ button: 'middle' });
+  await expect(day).toHaveAttribute('aria-selected', 'false');
+  await day.click();
+  await expect(day).toHaveAttribute('aria-selected', 'true');
+});
+
+test('Escape abandons a drag on the timetable even when the keyboard is in the name box', async ({ page, browser }) => {
+  await signUp(page);
+  const { days, link } = await createEvent(page);
+  const context = await browser.newContext(NY);
+  const guest = await context.newPage();
+  await guest.goto(link);
+  await guest.getByLabel('Your name').fill('Ana');
+  const from = await guest.getByRole('gridcell', { name: `${days[0].cell}, 10:00 AM`, exact: true }).boundingBox();
+  const to = await guest.getByRole('gridcell', { name: `${days[1].cell}, 12:00 PM`, exact: true }).boundingBox();
+  await guest.getByLabel('Your name').focus();
+  await guest.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await guest.mouse.down();
+  await guest.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 4 });
+  await guest.keyboard.press('Escape');
+  await guest.mouse.up();
+  await expect(guest.locator('.tt-cell[aria-selected="true"]')).toHaveCount(0);
+  await context.close();
+});
+
+test('a failure stays on screen until it is dismissed', async ({ page, context }) => {
+  await signUp(page);
+  await createEvent(page);
+  await context.route(/documents:(commit|batchWrite)|documents\/events\//, (route) => (route.request().method() === 'GET' ? route.continue() : route.abort('internetdisconnected')));
+  await page.getByRole('button', { name: 'Close responses' }).click();
+  const problem = page.getByRole('alert').filter({ hasText: 'couldn’t reach the server' });
+  await expect(problem).toBeVisible();
+  await page.waitForTimeout(5000);
+  await expect(problem).toBeVisible();
+  await problem.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(problem).toHaveCount(0);
+});

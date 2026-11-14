@@ -67,7 +67,7 @@ function demo() {
           h('h2', null, 'You: mark when you’re free'),
           paint.el),
         h('div', null,
-          h('h2', null, 'Everyone: darker is better'),
+          h('h2', null, 'Everyone: stronger shading, more people'),
           heat.el)),
       legend,
       readout),

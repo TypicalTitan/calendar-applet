@@ -1,14 +1,20 @@
 import { h } from '../ui/dom.js';
 
-/** A plain page with a heading, a sentence or two, and optionally one way forward. */
-export function messageView({ title, body, action }) {
+/**
+ * A plain page with a heading, a sentence or two, and optionally a way forward. `action` is the
+ * main one; `secondary` is a quieter alternative. Each is { href, label } or { onclick, label }.
+ */
+export function messageView({ title, body, action, secondary }) {
+  const control = (item, quiet) => (item.href
+    ? h('a', { class: quiet ? 'btn btn-quiet' : 'btn', href: item.href }, item.label)
+    : h('button', { type: 'button', class: quiet ? 'btn btn-quiet' : 'btn', onclick: item.onclick }, item.label));
   return {
     title,
     narrow: true,
     el: h('div', { class: 'stack' },
       h('h1', null, title),
       typeof body === 'string' ? h('p', { class: 'muted' }, body) : body,
-      action ? h('p', null, h('a', { class: 'btn', href: action.href }, action.label)) : null),
+      action || secondary ? h('p', { class: 'row' }, action ? control(action, false) : null, secondary ? control(secondary, true) : null) : null),
   };
 }
 

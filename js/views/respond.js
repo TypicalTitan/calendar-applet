@@ -5,39 +5,51 @@ import { createPaintGrid } from '../ui/grid.js';
 import { zoneChooser } from '../ui/zone.js';
 import { getEvent, getMyAnswer, saveMyAnswer, deleteMyAnswer, getAccount, forgetGuest, SAVE_PAUSE } from '../backend.js';
 import { buildSlots, slotWall } from '../core/slots.js';
-import { cleanName, fromAnswer, toAnswer, NAME_MAX } from '../core/availability.js';
+import { cleanName, fromAnswer, toAnswer, isAnswer, emptyAnswer, NAME_MAX } from '../core/availability.js';
 import { duration, eventSummary, shortDate, timeLabel } from '../ui/format.js';
 import { messageView } from './misc.js';
 
 export function respondView({ params }) {
   const [eventId] = params;
-  const holder = h('div', null, h('p', { class: 'loading', role: 'status' }, 'Loading the event…'));
-  const page = { title: 'Event', el: holder, dispose: null };
+  const holder = h('div');
   let disposed = false;
+  let cleanup = null;
 
-  getEvent(eventId).then(async (event) => {
-    if (disposed) return;
-    if (!event) {
-      replace(holder, messageView({
-        title: 'We can’t find that event',
-        body: 'The link may be cut short, or the organizer may have deleted the event. Ask them to send the link again.',
-      }).el);
+  async function load() {
+    replace(holder, h('p', { class: 'loading', role: 'status' }, 'Loading the event…'));
+    let event;
+    let mine;
+    try {
+      event = await getEvent(eventId);
+      if (disposed) return;
+      if (!event) {
+        replace(holder, messageView({
+          title: 'We can’t find that event',
+          body: 'The link may be cut short, or the organizer may have deleted the event. Ask them to send the link again.',
+        }).el);
+        return;
+      }
+      if (event === 'damaged') {
+        replace(holder, messageView({
+          title: 'This event can’t be shown',
+          body: 'Its details are not in a form this site understands. Ask the organizer to create it again.',
+        }).el);
+        return;
+      }
+      document.title = `${event.title} · ${document.title.split(' · ').pop()}`;
+      // An answer already saved from this browser must be on the page before anything can be
+      // saved: showing an empty form instead would let the next save wipe it out.
+      mine = await getMyAnswer(event);
+    } catch (error) {
+      if (disposed) return;
+      replace(holder, h('div', { class: 'stack' },
+        h('p', { class: 'banner banner-danger', role: 'alert' }, error.message),
+        h('div', null, h('button', { type: 'button', class: 'btn', onclick: load }, 'Try again'))));
       return;
     }
-    if (event === 'damaged') {
-      replace(holder, messageView({
-        title: 'This event can’t be shown',
-        body: 'Its details are not in a form this site understands. Ask the organizer to create it again.',
-      }).el);
-      return;
-    }
-    document.title = `${event.title} · ${document.title.split(' · ').pop()}`;
-    const mine = await getMyAnswer(event).catch(() => null);
     if (disposed) return;
-    page.dispose = build(event, mine);
-  }).catch((error) => {
-    if (!disposed) replace(holder, h('p', { class: 'banner banner-danger', role: 'alert' }, error.message));
-  });
+    cleanup = build(event, mine);
+  }
 
   function build(event, existing) {
     const slots = buildSlots(event);
@@ -47,6 +59,7 @@ export function respondView({ params }) {
     let savedAs = existing?.as;                   // whose answer it is: 'account' or 'guest'
     let bits = fromAnswer(existing?.slots, slots.count);
     let dirty = false;
+    let removing = false;
     // The database refuses a second save within a few seconds of the last one. Rather than show
     // an error, wait out whatever is left of that pause before sending.
     let lastWriteAt = existing?.updatedAt || 0;
@@ -55,14 +68,35 @@ export function respondView({ params }) {
       return left > 0 && left <= SAVE_PAUSE ? new Promise((resolve) => { setTimeout(resolve, left); }) : null;
     };
 
+    // What has been typed and marked but not saved is kept for this tab, so a stray tap on a
+    // link, or the Back button, does not throw it away.
+    const draftKey = `overlap.draft.${event.id}`;
+    const startName = existing?.name || account?.name || '';
+    const startSlots = existing?.slots || emptyAnswer(slots.count);
+    const readDraft = () => {
+      try {
+        const draft = JSON.parse(window.sessionStorage.getItem(draftKey));
+        return draft && typeof draft.name === 'string' && isAnswer(draft.slots, slots.count) ? draft : null;
+      } catch {
+        return null;
+      }
+    };
+    const clearDraft = () => { try { window.sessionStorage.removeItem(draftKey); } catch { /* nothing to clear */ } };
+    const draft = event.open ? readDraft() : null;
+    const restored = Boolean(draft && (draft.name !== startName || draft.slots !== startSlots));
+    if (restored) bits = fromAnswer(draft.slots, slots.count);
+
     const name = field({
       label: 'Your name',
-      control: h('input', { class: 'input', type: 'text', name: 'name', autocomplete: 'name', maxlength: NAME_MAX, required: true, value: existing?.name || account?.name || '' }),
+      control: h('input', { class: 'input', type: 'text', name: 'name', autocomplete: 'name', maxlength: NAME_MAX, required: true, value: restored ? draft.name.slice(0, NAME_MAX) : startName }),
       hint: 'So the organizer knows whose times these are.',
     });
-    name.input.addEventListener('input', () => { dirty = true; name.setError(''); });
+    const keepDraft = () => {
+      try { window.sessionStorage.setItem(draftKey, JSON.stringify({ name: name.input.value, slots: toAnswer(bits) })); } catch { /* private mode: no draft */ }
+    };
+    name.input.addEventListener('input', () => { dirty = true; name.setError(''); keepDraft(); });
 
-    const tally = h('p', { class: 'status-line nums' });
+    const tally = h('p', { class: 'status-line nums', role: 'status' });
     const status = h('p', { class: 'status-line', role: 'status' });
     const save = h('button', { type: 'submit', class: 'btn' }, 'Save my times');
     const clear = h('button', { type: 'button', class: 'btn btn-quiet btn-small' }, 'Clear');
@@ -87,15 +121,30 @@ export function respondView({ params }) {
     const chooser = zoneChooser({ event, slots, onChange: (next) => { zone = next; grid.setZone(next); } });
     zone = chooser.zone;
 
+    const hintId = `grid-hint-${event.id}`;
     const grid = createPaintGrid({
       event, slots, zone, value: bits, readOnly: !event.open,
       label: `Times for ${event.title}. Mark the ones you are free.`,
-      onChange: (next) => { bits = next; dirty = true; status.textContent = ''; status.classList.remove('is-good'); showTally(); },
+      describedBy: event.open ? hintId : null,
+      onChange: (next) => {
+        bits = next;
+        dirty = true;
+        keepDraft();
+        status.textContent = '';
+        status.classList.remove('is-good');
+        showTally();
+      },
       onPreview: describePreview,
     });
     showTally();
+    if (restored) {
+      dirty = true;
+      status.textContent = 'These changes are not saved yet.';
+    }
 
     clear.addEventListener('click', () => grid.clear());
+
+    const setBusy = (busy) => { save.disabled = busy; remove.disabled = busy; };
 
     const form = h('form', { class: 'stack', novalidate: true });
     form.addEventListener('submit', async (e) => {
@@ -108,7 +157,7 @@ export function respondView({ params }) {
         return;
       }
       formError.hidden = true;
-      save.disabled = true;
+      setBusy(true);
       status.classList.remove('is-good');
       status.textContent = 'Saving…';
       try {
@@ -118,6 +167,7 @@ export function respondView({ params }) {
         lastWriteAt = Date.now();
         saved = { name: cleaned, slots: slotsText };
         dirty = false;
+        clearDraft();
         name.input.value = cleaned;
         remove.hidden = false;
         status.classList.add('is-good');
@@ -127,11 +177,12 @@ export function respondView({ params }) {
         formError.textContent = error.message;
         formError.hidden = false;
       } finally {
-        save.disabled = false;
+        setBusy(false);
       }
     });
 
     remove.addEventListener('click', async () => {
+      if (removing) return;
       const ok = await confirmDialog({
         title: 'Remove your answer?',
         body: 'The organizer will no longer see your name or times for this event.',
@@ -139,6 +190,13 @@ export function respondView({ params }) {
         danger: true,
       });
       if (!ok) return;
+      // The database may make this wait a few seconds after a save. Say so, and do not let the
+      // person leave thinking it is already done.
+      removing = true;
+      setBusy(true);
+      formError.hidden = true;
+      status.classList.remove('is-good');
+      status.textContent = 'Removing…';
       try {
         await pause();
         await deleteMyAnswer(event, savedAs);
@@ -146,15 +204,20 @@ export function respondView({ params }) {
         lastWriteAt = 0;
         saved = null;
         dirty = false;
+        clearDraft();
         remove.hidden = true;
-        grid.setValue(new Uint8Array(slots.count));
+        someoneElse.hidden = true;
         bits = new Uint8Array(slots.count);
+        grid.setValue(bits);
         showTally();
-        status.classList.remove('is-good');
         status.textContent = 'Your answer has been removed.';
-        toast('Answer removed');
       } catch (error) {
-        toast(error.message);
+        status.textContent = '';
+        formError.textContent = error.message;
+        formError.hidden = false;
+      } finally {
+        removing = false;
+        setBusy(false);
       }
     });
 
@@ -176,6 +239,7 @@ export function respondView({ params }) {
         savedAs = undefined;
         dirty = false;
         lastWriteAt = 0;
+        clearDraft();
         bits = new Uint8Array(slots.count);
         grid.setValue(bits);
         name.input.value = '';
@@ -186,11 +250,11 @@ export function respondView({ params }) {
         showTally();
         name.input.focus();
       } catch (error) {
-        toast(error.message);
+        toast(error.message, { error: true });
       }
     }
 
-    const warnOnLeave = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
+    const warnOnLeave = (e) => { if (dirty || removing) { e.preventDefault(); e.returnValue = ''; } };
     window.addEventListener('beforeunload', warnOnLeave);
 
     const at = slots.utc[0];
@@ -206,13 +270,16 @@ export function respondView({ params }) {
       : null;
 
     if (!event.open) {
+      // Closed: nothing can be added or changed, but what you saved is still yours to remove.
       replace(holder, h('div', { class: 'stack' },
         head, organizerNote,
-        h('div', { class: 'banner', role: 'status' },
+        h('div', { class: 'banner' },
           h('p', null, saved
             ? 'This event is closed. The organizer isn’t taking changes any more; here is what you saved.'
             : 'This event is closed. The organizer isn’t taking new answers.')),
-        saved ? h('div', { class: 'sheet stack' }, chooser.el, grid.el, h('div', { class: 'tt-foot' }, tally)) : null));
+        saved ? h('div', { class: 'sheet stack' }, chooser.el, grid.el, h('div', { class: 'tt-foot' }, tally)) : null,
+        saved ? h('div', { class: 'row' }, remove) : null,
+        formError, status));
     } else {
       replace(form,
         organizerNote,
@@ -220,9 +287,11 @@ export function respondView({ params }) {
         h('div', { class: 'sheet stack' },
           name.el,
           chooser.el,
-          h('p', { class: 'muted' }, navigator.maxTouchPoints > 0
-            ? 'Tap a time to mark it. To mark several at once, press and hold, then drag. With a mouse, just drag.'
-            : 'Drag across the times you’re free. Start a drag on a marked time to clear instead.'),
+          h('p', { class: 'muted', id: hintId },
+            navigator.maxTouchPoints > 0
+              ? 'Tap a time to mark it. To mark several at once, press and hold, then drag. With a mouse, just drag.'
+              : 'Drag across the times you’re free. Start a drag on a marked time to clear instead.',
+            ' With a keyboard: arrow keys move, Space marks or clears a time, and Shift with an arrow key carries the mark along.'),
           grid.el,
           h('div', { class: 'tt-foot' }, tally, clear)),
         formError,
@@ -238,9 +307,11 @@ export function respondView({ params }) {
     };
   }
 
+  load();
+
   return {
-    title: page.title,
+    title: 'Event',
     el: holder,
-    dispose: () => { disposed = true; if (page.dispose) page.dispose(); },
+    dispose: () => { disposed = true; if (cleanup) cleanup(); },
   };
 }

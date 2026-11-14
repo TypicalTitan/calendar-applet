@@ -53,6 +53,7 @@ const ICONS = {
   right: 'M9.5 6l6 6-6 6',
   plus: 'M12 5v14 M5 12h14',
   table: 'M4 6h16v12H4z M4 10h16 M4 14h16 M10 6v12',
+  x: 'M6 6l12 12 M18 6L6 18',
 };
 
 /** A small stroked icon. Decorative: hidden from screen readers. */
@@ -89,12 +90,25 @@ export function logoMark() {
 }
 
 let toastRegion;
+let errorRegion;
 
-/** A short confirmation that also reaches screen readers. */
-export function toast(message) {
+/**
+ * A short notice that also reaches screen readers.
+ * A confirmation ("Link copied") goes away by itself. A failure, `toast(message, { error: true })`,
+ * stays until it is dismissed: something did not happen, and the person must not miss that.
+ */
+export function toast(message, { error = false } = {}) {
   if (!toastRegion) {
-    toastRegion = h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' });
-    document.body.append(toastRegion);
+    errorRegion = h('div', { class: 'toasts-errors' });
+    toastRegion = h('div', { class: 'toasts-passing', role: 'status', 'aria-live': 'polite' });
+    document.body.append(h('div', { class: 'toasts' }, errorRegion, toastRegion));
+  }
+  if (error) {
+    const item = h('div', { class: 'toast toast-error', role: 'alert' },
+      h('span', null, message),
+      h('button', { type: 'button', class: 'toast-close', 'aria-label': 'Dismiss', onclick: () => item.remove() }, icon('x')));
+    errorRegion.replaceChildren(item); // one at a time: a newer failure replaces an older one
+    return;
   }
   const item = h('div', { class: 'toast' }, message);
   toastRegion.append(item);

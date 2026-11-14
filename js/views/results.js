@@ -17,8 +17,20 @@ import { messageView } from './misc.js';
 
 const REFRESH_MS = 60_000;
 
-export function resultsView({ params, navigate, appName }) {
+export function resultsView({ params, navigate, appName, signInThenReturn }) {
   const [eventId] = params;
+
+  // Someone who is not signed in was probably sent the organizer's own address by mistake.
+  // Point them at the invite page rather than at a sign-in form they have no use for.
+  if (!getAccount()) {
+    return messageView({
+      title: 'This page is for the organizer',
+      body: 'Only the organizer can see the answers to an event. If you were invited, add your own times instead.',
+      action: { href: `#/e/${eventId}`, label: 'Add my times' },
+      secondary: { onclick: signInThenReturn, label: 'I’m the organizer' },
+    });
+  }
+
   const holder = h('div', null, h('p', { class: 'loading', role: 'status' }, 'Loading the event…'));
   let disposed = false;
   let cleanup = null;
@@ -54,8 +66,9 @@ export function resultsView({ params, navigate, appName }) {
     let answers = firstAnswers;
     let counts = [];
     let isolated = null;      // id of the person whose times are shown alone
-    let pinnedBlock = -1;     // which "best time" is outlined on the grid
+    let pinnedKey = null;     // which "best time" is outlined on the grid
     let showTable = false;
+    let removals = 0;         // counts answers removed here, to spot a refresh that started before one
     let lastLoaded = Date.now();
     let loading = false;
 
@@ -81,7 +94,7 @@ export function resultsView({ params, navigate, appName }) {
     let zone = chooser.zone;
     grid = createHeatGrid({
       event, slots, zone,
-      label: `Answers for ${event.title}. Darker means more people are free.`,
+      label: `Answers for ${event.title}. Stronger shading means more people are free.`,
       onSelect: (index) => drawDetail(index),
     });
 
@@ -90,14 +103,14 @@ export function resultsView({ params, navigate, appName }) {
     const tableToggle = h('button', { type: 'button', class: 'btn btn-quiet btn-small', 'aria-pressed': 'false' }, icon('table'), 'Show as a table');
     tableToggle.addEventListener('click', () => {
       showTable = !showTable;
-      tableToggle.setAttribute('aria-pressed', String(showTable));
+      tableToggle.setAttribute('aria-pressed', String(showTable)); // the label stays; "pressed" says which view is on
       drawGridArea();
     });
     const refresh = h('button', { type: 'button', class: 'btn btn-quiet btn-small' }, icon('refresh'), 'Refresh');
     refresh.addEventListener('click', () => reload({ announce: true, full: true }));
 
     // ---- side panels
-    const peopleTitle = h('h2', { id: uid('people') });
+    const peopleTitle = h('h2', { id: uid('people'), tabindex: '-1' });
     const peopleList = h('ul', { class: 'people' });
     const bestList = h('ol', { class: 'best' });
     const lengthSelect = h('select', { class: 'select' });
@@ -106,21 +119,23 @@ export function resultsView({ params, navigate, appName }) {
       .sort((a, b) => a - b);
     for (const m of lengths) lengthSelect.append(h('option', { value: String(m) }, duration(m)));
     lengthSelect.value = String(lengths.includes(60) ? 60 : lengths[0]);
-    lengthSelect.addEventListener('change', () => { pinnedBlock = -1; grid.setHighlight([]); drawBest(); });
+    lengthSelect.addEventListener('change', () => { pinnedKey = null; drawBest(); });
     const lengthField = field({ label: 'For a meeting of', control: lengthSelect });
 
     // ---- state line and actions
     const stateTag = h('span', { class: 'tag' });
     const toggleOpen = h('button', { type: 'button', class: 'btn btn-quiet' });
+    let toggling = false;
     toggleOpen.addEventListener('click', async () => {
-      toggleOpen.disabled = true;
+      if (toggling) return; // guarded, not disabled: disabling a button throws away keyboard focus
+      toggling = true;
       try {
         await updateEvent(event.id, { open: !event.open });
         event.open = !event.open;
         drawState();
         toast(event.open ? 'Event reopened' : 'Event closed');
-      } catch (error) { toast(error.message); }
-      toggleOpen.disabled = false;
+      } catch (error) { toast(error.message, { error: true }); }
+      toggling = false;
     });
     const remove = h('button', { type: 'button', class: 'btn btn-danger' }, icon('trash'), 'Delete event');
     remove.addEventListener('click', async () => {
@@ -135,7 +150,7 @@ export function resultsView({ params, navigate, appName }) {
         await deleteEvent(event.id);
         toast('Event deleted');
         navigate('/events');
-      } catch (error) { toast(error.message); }
+      } catch (error) { toast(error.message, { error: true }); }
     });
 
     // ---- name and note
@@ -242,11 +257,11 @@ export function resultsView({ params, navigate, appName }) {
       }
       replace(peopleList, answers.map((a) => {
         const marked = [...a.slots].filter((c) => c === '1').length * event.slotMinutes;
-        const who = h('button', { type: 'button', class: 'who', 'aria-pressed': String(isolated === a.id), title: 'Show only this person’s times' },
+        const who = h('button', { type: 'button', class: 'who', dataset: { key: `who:${a.id}` }, 'aria-pressed': String(isolated === a.id), title: 'Show only this person’s times' },
           h('span', { class: 'n' }, a.name),
           h('span', { class: 'm' }, `${marked ? `${duration(marked)} free` : 'Not free at any time'}${a.updatedAt ? `, answered ${ago(a.updatedAt)}` : ''}`));
-        who.addEventListener('click', () => { isolated = isolated === a.id ? null : a.id; drawAll(); });
-        const del = h('button', { type: 'button', class: 'icon-btn', 'aria-label': `Remove ${a.name}` }, icon('trash'));
+        who.addEventListener('click', () => showOnly(isolated === a.id ? null : a.id));
+        const del = h('button', { type: 'button', class: 'icon-btn', dataset: { key: `del:${a.id}` }, 'aria-label': `Remove ${a.name}` }, icon('trash'));
         del.addEventListener('click', async () => {
           const ok = await confirmDialog({
             title: `Remove ${a.name}’s answer?`,
@@ -257,15 +272,43 @@ export function resultsView({ params, navigate, appName }) {
           if (!ok) return;
           try {
             await deleteAnswer(event, a.id);
+            removals += 1;
             answers = answers.filter((other) => other.id !== a.id);
             if (isolated === a.id) isolated = null;
             grid.select(-1);
             drawAll();
+            peopleTitle.focus(); // the button that was pressed is gone; land on the list's heading
             toast('Answer removed');
-          } catch (error) { toast(error.message); }
+          } catch (error) { toast(error.message, { error: true }); }
         });
         return h('li', null, who, del);
       }));
+    }
+
+    // Shows one person's times alone (or everyone's again) without rebuilding the list, so the
+    // button that was pressed keeps the keyboard focus and announces its new state.
+    function showOnly(id) {
+      const from = isolated;
+      isolated = id;
+      for (const button of peopleList.querySelectorAll('.who')) {
+        button.setAttribute('aria-pressed', String(button.dataset.key === `who:${isolated}`));
+      }
+      drawGridArea();
+      if (id === null && from && !peopleList.contains(document.activeElement)) {
+        peopleList.querySelector(`[data-key="who:${from}"]`)?.focus();
+      }
+    }
+
+    const blockKey = (block) => `best:${block.day}:${block.startK}:${block.lastStartK}:${block.length}`;
+    let blocksShown = new Map(); // key -> the slot indexes that block covers
+
+    // Marks the chosen best time on its button and on the grid, without rebuilding the list.
+    function showPinned() {
+      if (pinnedKey && !blocksShown.has(pinnedKey)) pinnedKey = null;
+      for (const button of bestList.querySelectorAll('button')) {
+        button.setAttribute('aria-pressed', String(button.dataset.key === pinnedKey));
+      }
+      grid.setHighlight(pinnedKey ? blocksShown.get(pinnedKey) : []);
     }
 
     function drawBest() {
@@ -275,9 +318,12 @@ export function resultsView({ params, navigate, appName }) {
         replace(bestList, h('li', null, h('p', { class: 'muted' }, answers.length
           ? 'Nobody has marked a stretch that long. Try a shorter meeting.'
           : 'The best times appear here once people answer.')));
+        blocksShown = new Map();
+        showPinned();
         return;
       }
-      replace(bestList, blocks.map((block, n) => {
+      blocksShown = new Map();
+      replace(bestList, blocks.map((block) => {
         const first = block.day * slots.perDay + block.startK;
         const lastStart = block.day * slots.perDay + block.lastStartK;
         const last = lastStart + block.length - 1;
@@ -287,19 +333,19 @@ export function resultsView({ params, navigate, appName }) {
         const flexible = block.lastStartK > block.startK
           ? `Start any time from ${timeLabel(a.startMinute)} to ${timeLabel(slotWall(event, slots, lastStart, zone).startMinute)}. `
           : '';
-        const button = h('button', { type: 'button', 'aria-pressed': String(pinnedBlock === n) },
+        const key = blockKey(block);
+        blocksShown.set(key, Array.from({ length: last - first + 1 }, (_, i) => first + i));
+        const button = h('button', { type: 'button', dataset: { key }, 'aria-pressed': 'false' },
           h('span', { class: 't' }, `${shortDate(a.date)}, ${timeRange(a.startMinute, b.endMinute)}`),
           h('span', { class: 'c' }, `${block.count === answers.length && answers.length > 1 ? `All ${block.count}` : `${block.count} of ${answers.length}`} free. ${flexible}${missing.length ? `Missing: ${listNames(missing)}.` : ''}`),
           h('span', { class: 'meter', 'aria-hidden': 'true' }, h('i', { style: { '--t': String(block.count / answers.length) } })));
         button.addEventListener('click', () => {
-          pinnedBlock = pinnedBlock === n ? -1 : n;
-          const cells = [];
-          if (pinnedBlock === n) for (let i = first; i <= last; i++) cells.push(i);
-          grid.setHighlight(cells);
-          drawBest();
+          pinnedKey = pinnedKey === key ? null : key;
+          showPinned();
         });
         return h('li', null, button);
       }));
+      showPinned();
     }
 
     function dataTable() {
@@ -321,25 +367,39 @@ export function resultsView({ params, navigate, appName }) {
     function drawGridArea() {
       const person = isolated ? answers.find((a) => a.id === isolated) : null;
       grid.setData({ counts, total: answers.length, person: person ? fromAnswer(person.slots, slots.count) : null });
-      replace(tableToggle, icon('table'), showTable ? 'Show as a grid' : 'Show as a table');
-      replace(gridHolder, showTable ? dataTable() : grid.el);
+      if (showTable) {
+        // The table is rebuilt from the data, but stays scrolled where the reader left it.
+        const old = gridHolder.querySelector('.table-wrap');
+        const at = old ? [old.scrollLeft, old.scrollTop] : [0, 0];
+        const table = dataTable();
+        replace(gridHolder, table);
+        [table.scrollLeft, table.scrollTop] = at;
+      } else if (gridHolder.firstChild !== grid.el) {
+        replace(gridHolder, grid.el); // otherwise left alone: re-attaching it would lose its scroll position
+      }
       replace(legendHolder, showTable ? null : person
-        ? h('p', { class: 'legend-scale' }, `Showing only ${person.name}’s free times. `, h('button', { type: 'button', class: 'linklike', onclick: () => { isolated = null; drawAll(); } }, 'Show everyone'))
+        ? h('p', { class: 'legend-scale' }, `Showing only ${person.name}’s free times. `, h('button', { type: 'button', class: 'linklike', onclick: () => showOnly(null) }, 'Show everyone'))
         : heatLegend(counts, answers.length));
     }
 
+    // Redraws everything that depends on the answers. Whatever had the keyboard focus gets it
+    // back if it still exists, and a chosen best time stays chosen.
     function drawAll() {
+      const focused = document.activeElement?.dataset?.key;
       counts = countAvailable(answers.map((a) => a.slots), slots.count);
       if (isolated && !answers.some((a) => a.id === isolated)) isolated = null;
-      pinnedBlock = -1;
-      grid.setHighlight([]);
       drawState();
       drawFigures();
       drawGridArea();
       drawPeople();
       drawBest();
       drawDetail(grid.selected);
+      if (focused && !holder.contains(document.activeElement)) {
+        [...holder.querySelectorAll('[data-key]')].find((el) => el.dataset.key === focused)?.focus();
+      }
     }
+
+    const signature = (list) => list.map((a) => `${a.id}:${a.updatedAt}:${a.name}:${a.slots}`).join('|');
 
     // A full reload fetches every answer. A light one asks only for answers saved since the
     // newest one already here, which costs a single read when nothing has changed; it cannot
@@ -347,29 +407,36 @@ export function resultsView({ params, navigate, appName }) {
     async function reload({ announce = false, full = false } = {}) {
       if (loading) return;
       loading = true;
-      refresh.disabled = true;
+      const removedBefore = removals;
       try {
+        const before = signature(answers);
+        let next;
         if (full) {
-          answers = await listAnswers(event);
-          lastLoaded = Date.now();
-          drawAll();
+          next = await listAnswers(event);
         } else {
           const newest = answers.reduce((max, a) => Math.max(max, a.updatedAt || 0), 0);
           const changed = await listAnswersSince(event, newest);
-          lastLoaded = Date.now();
-          if (changed.length) {
-            const byId = new Map(answers.map((a) => [a.id, a]));
-            for (const answer of changed) byId.set(answer.id, answer);
-            answers = [...byId.values()].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-            drawAll();
-          }
+          const byId = new Map(answers.map((a) => [a.id, a]));
+          for (const answer of changed) byId.set(answer.id, answer);
+          next = [...byId.values()].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+        }
+        lastLoaded = Date.now();
+        if (removals !== removedBefore) {
+          // An answer was removed here while this request was on its way; its reply is out of
+          // date and would bring that answer back. Ask again instead.
+          loading = false;
+          return reload({ announce, full: true });
+        }
+        if (signature(next) !== before) {
+          answers = next;
+          drawAll();
         }
         if (announce) toast('Up to date');
       } catch (error) {
-        if (announce) toast(error.message);
+        if (announce) toast(error.message, { error: true });
       }
-      refresh.disabled = false;
       loading = false;
+      return undefined;
     }
 
     // Keep the page fresh while it is on screen, without a permanent connection.
