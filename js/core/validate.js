@@ -52,7 +52,7 @@ export function validateEvent(input) {
 
   const { startMinute, endMinute, slotMinutes } = input;
   if (!LIMITS.slotLengths.includes(slotMinutes)) {
-    errors.time = 'Choose a slot length from the list.';
+    errors.time = 'Pick a block size from the list.';
   } else if (!Number.isInteger(startMinute) || !Number.isInteger(endMinute)) {
     errors.time = 'Choose a start and end time.';
   } else if (startMinute < 0 || startMinute >= 1440 || startMinute % 15 !== 0) {
@@ -60,9 +60,9 @@ export function validateEvent(input) {
   } else if (endMinute <= startMinute) {
     errors.time = 'The end time must be after the start time.';
   } else if (endMinute - startMinute > 1440) {
-    errors.time = 'A day’s window can be at most 24 hours.';
+    errors.time = 'A day can be at most 24 hours.';
   } else if ((endMinute - startMinute) % slotMinutes !== 0) {
-    errors.time = `With ${slotMinutes}-minute slots, the window must be a whole number of slots long.`;
+    errors.time = `From and To must be a whole number of ${slotMinutes}-minute blocks apart.`;
   }
 
   const ok = Object.keys(errors).length === 0;

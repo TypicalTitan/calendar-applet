@@ -12,7 +12,7 @@ export function accountView({ navigate }) {
   // ---- name
   const name = field({ label: 'Your name', control: h('input', { class: 'input', type: 'text', autocomplete: 'name', maxlength: 60, value: account.name }) });
   const saveName = h('button', { type: 'submit', class: 'btn btn-quiet' }, 'Save name');
-  const nameForm = h('form', { class: 'sheet stack', method: 'post', novalidate: true }, h('h2', null, 'Profile'), name.el, h('div', null, saveName));
+  const nameForm = h('form', { class: 'stack', method: 'post', novalidate: true }, name.el, h('div', null, saveName));
   nameForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const cleaned = tidyLine(name.input.value).slice(0, 60);
@@ -29,10 +29,10 @@ export function accountView({ navigate }) {
   function drawEmail(verified) {
     verifyState.textContent = verified
       ? `${account.email} is confirmed.`
-      : `${account.email} is not confirmed yet. Open the link we emailed you; it proves the address is yours.`;
+      : `${account.email} isn’t confirmed yet. Open the link in the email.`;
     verifyActions.hidden = verified;
   }
-  const resend = h('button', { type: 'button', class: 'btn btn-quiet btn-small' }, 'Send the email again');
+  const resend = h('button', { type: 'button', class: 'btn btn-quiet btn-small' }, 'Send it again');
   resend.addEventListener('click', async () => {
     resend.disabled = true;
     try { await resendVerification(); toast('Confirmation email sent'); } catch (error) { toast(error.message, { error: true }); }
@@ -54,7 +54,7 @@ export function accountView({ navigate }) {
   const next = field({ label: 'New password', control: h('input', { class: 'input', type: 'password', autocomplete: 'new-password', required: true, minlength: PASSWORD_MIN, maxlength: 128 }), hint: `At least ${PASSWORD_MIN} characters.` });
   const passwordError = h('p', { class: 'form-error', role: 'alert', hidden: true });
   const savePassword = h('button', { type: 'submit', class: 'btn btn-quiet' }, 'Change password');
-  const passwordForm = h('form', { class: 'sheet stack', method: 'post', novalidate: true },
+  const passwordForm = h('form', { class: 'part stack', method: 'post', novalidate: true },
     h('h2', null, 'Password'),
     // A hidden user-name field lets password managers file the new password under the right account.
     h('input', { type: 'email', autocomplete: 'username', value: account.email, hidden: true, readonly: true, tabindex: '-1', 'aria-hidden': 'true' }),
@@ -87,7 +87,7 @@ export function accountView({ navigate }) {
     const ok = await confirmDialog({
       title: 'Delete your account?',
       body: h('div', { class: 'stack' },
-        h('p', { class: 'muted' }, 'This deletes your account, every event you created, and all the answers to them, for good. Invite links you have sent stop working.'),
+        h('p', { class: 'muted' }, 'Deletes your account, your events and every answer to them, for good. Invite links you sent stop working.'),
         confirmField.el),
       confirmLabel: 'Delete account',
       danger: true,
@@ -118,11 +118,11 @@ export function accountView({ navigate }) {
     el: h('div', { class: 'stack' },
       h('div', { class: 'page-head' }, h('h1', null, 'Account')),
       nameForm,
-      h('section', { class: 'sheet stack' }, h('h2', null, 'Email'), verifyState, verifyActions),
+      h('section', { class: 'part stack' }, h('h2', null, 'Email'), verifyState, verifyActions),
       passwordForm,
-      h('section', { class: 'sheet stack' },
+      h('section', { class: 'part stack' },
         h('h2', null, 'Delete account'),
-        h('p', { class: 'muted' }, 'Removes your account and everything you created with it. This can’t be undone.'),
+        h('p', { class: 'muted' }, 'Deletes your account and all your events. Can’t be undone.'),
         h('div', null, remove),
         removeError, removeStatus)),
   };

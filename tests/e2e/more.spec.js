@@ -169,9 +169,9 @@ test('the best times list ranks the stretch most people can make', async ({ page
   const best = page.getByRole('region', { name: 'Best times' });
   await expect(best.getByRole('listitem').first()).toContainText('1:00 PM–3:00 PM');
   await expect(best.getByRole('listitem').first()).toContainText('All 2 free');
-  await best.getByLabel('For a meeting of').selectOption({ label: '2 hours' });
+  await best.getByLabel('How long').selectOption({ label: '2 hours' });
   await expect(best.getByRole('listitem')).toHaveCount(1);
-  await best.getByLabel('For a meeting of').selectOption({ label: '3 hours' });
+  await best.getByLabel('How long').selectOption({ label: '3 hours' });
   await expect(best).toContainText('Nobody has marked a stretch that long');
 });
 
@@ -212,7 +212,7 @@ test('a guest can remove their own answer', async ({ page, browser }) => {
   const { context, page: guest } = await answerAsGuest(browser, link, 'Ana', [`${days[0].cell}, 9:00 AM`]);
   await guest.getByRole('button', { name: 'Remove my answer' }).click();
   await guest.getByRole('dialog').getByRole('button', { name: 'Remove my answer' }).click();
-  await expect(guest.getByText('Your answer has been removed.')).toBeVisible();
+  await expect(guest.getByText('Answer removed.')).toBeVisible();
   await context.close();
   await page.getByRole('button', { name: 'Refresh' }).click();
   await expect(page.getByText('No answers yet')).toBeVisible();
@@ -263,7 +263,7 @@ test('the organizer can correct the name and note of an event, and invitees see 
   await dialog.getByRole('button', { name: 'Save changes' }).click();
   await expect(dialog.getByText('Give the event a name.')).toBeVisible();
   await dialog.getByLabel('Event name').fill('Board game weekend');
-  await dialog.getByLabel('Note for invitees').fill('Bring snacks.');
+  await dialog.getByLabel('Note').fill('Bring snacks.');
   await dialog.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByRole('heading', { name: 'Board game weekend', level: 1 })).toBeVisible();
   await expect(page.getByText('Bring snacks.')).toBeVisible();
@@ -410,7 +410,7 @@ test('a name with nothing visible in it is refused', async ({ page, browser }) =
   await guest.goto(link);
   await guest.getByLabel('Your name').fill('\u200D\u3164');
   await guest.getByRole('button', { name: 'Save my times' }).click();
-  await expect(guest.getByText('Enter your name so the organizer knows who you are.')).toBeVisible();
+  await expect(guest.getByText('Put in your name first.')).toBeVisible();
   await context.close();
 });
 
@@ -474,7 +474,7 @@ test('someone sent the organizer\'s own results link is shown the way to the inv
   const context = await browser.newContext(NY);
   const visitor = await context.newPage();
   await visitor.goto(`${link}/results`);
-  await expect(visitor.getByText('Only the organizer can see the answers')).toBeVisible();
+  await expect(visitor.getByText('Only the person who made this event can see the answers')).toBeVisible();
   await visitor.getByRole('link', { name: 'Add my times' }).click();
   await expect(visitor.getByRole('heading', { name: title, level: 1 })).toBeVisible();
   await expect(visitor.getByLabel('Your name')).toBeVisible();
@@ -507,13 +507,13 @@ test('an invitee can still remove their answer after the event is closed', async
   const { days, link } = await createEvent(page);
   const { context, page: guest } = await answerAsGuest(browser, link, 'Ana', [`${days[0].cell}, 9:00 AM`]);
   await page.getByRole('button', { name: 'Refresh' }).click();
-  await page.getByRole('button', { name: 'Close responses' }).click();
+  await page.getByRole('button', { name: 'Close event' }).click();
   await expect(page.getByText('Closed to new answers')).toBeVisible();
   await guest.reload();
   await expect(guest.getByText('This event is closed')).toBeVisible();
   await guest.getByRole('button', { name: 'Remove my answer' }).click();
   await guest.getByRole('dialog').getByRole('button', { name: 'Remove my answer' }).click();
-  await expect(guest.getByText('Your answer has been removed.')).toBeVisible({ timeout: 15_000 });
+  await expect(guest.getByText('Answer removed.')).toBeVisible({ timeout: 15_000 });
   await context.close();
   await page.getByRole('button', { name: 'Refresh' }).click();
   await expect(page.getByText('No answers yet')).toBeVisible();
@@ -584,7 +584,7 @@ test('a failure stays on screen until it is dismissed', async ({ page, context }
   await signUp(page);
   await createEvent(page);
   await context.route(/documents:(commit|batchWrite)|documents\/events\//, (route) => (route.request().method() === 'GET' ? route.continue() : route.abort('internetdisconnected')));
-  await page.getByRole('button', { name: 'Close responses' }).click();
+  await page.getByRole('button', { name: 'Close event' }).click();
   const problem = page.getByRole('alert').filter({ hasText: 'couldn’t reach the server' });
   await expect(problem).toBeVisible();
   await page.waitForTimeout(5000);

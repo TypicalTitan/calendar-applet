@@ -32,6 +32,11 @@ export function timeRange(startMinute, endMinute) {
   return `${timeLabel(startMinute)}–${timeLabel(endMinute)}`;
 }
 
+/** "9 AM to 5 PM": the hours of an event, said the short way. */
+export function hoursRange(startMinute, endMinute) {
+  return `${hourLabel(startMinute)} to ${hourLabel(endMinute)}`;
+}
+
 /** "Saturday, November 21" */
 export function longDate(date) {
   return fmt({ weekday: 'long', month: 'long', day: 'numeric' }).format(dateForFormatting(date));
@@ -124,22 +129,28 @@ export function zoneLabel(zone, utc = Date.now()) {
   return `${zone.replace(/_/g, ' ')} (${offsetLabel(zone, utc)})`;
 }
 
-/** "Eastern Time (UTC-05:00)": for telling a reader which zone they are looking at. */
-export function zoneName(zone, utc = Date.now()) {
+/** "Eastern Time": what people call a zone. */
+export function zoneWords(zone, utc = Date.now()) {
+  if (zone === 'UTC') return 'UTC';
   let name = '';
   try {
     const parts = new Intl.DateTimeFormat(locale, { timeZone: zone, timeZoneName: 'longGeneric' }).formatToParts(new Date(utc));
     name = parts.find((part) => part.type === 'timeZoneName')?.value || '';
   } catch { /* fall back to the zone's own name */ }
-  if (!name || /^(GMT|UTC)/.test(name)) name = zone === 'UTC' ? 'UTC' : `${zone.split('/').pop().replace(/_/g, ' ')} time`;
-  return zone === 'UTC' ? 'UTC' : `${name} (${offsetLabel(zone, utc)})`;
+  if (!name || /^(GMT|UTC)/.test(name)) name = `${zone.split('/').pop().replace(/_/g, ' ')} time`;
+  return name;
 }
 
-/** "Thu, Dec 10 to Sat, Dec 12, 9:00 AM-5:00 PM, Eastern Time (UTC-05:00)" */
+/** "Eastern Time (UTC-05:00)": for choosing between two zones, where the difference matters. */
+export function zoneName(zone, utc = Date.now()) {
+  return zone === 'UTC' ? 'UTC' : `${zoneWords(zone, utc)} (${offsetLabel(zone, utc)})`;
+}
+
+/** "Thu, Dec 10 to Sat, Dec 12, 9 AM to 5 PM, Eastern Time" */
 export function eventSummary(event, utc) {
   // A zone this browser does not know can still be named, just not described.
-  const zone = event.zoneKnown === false ? `${event.timezone.replace(/_/g, ' ')} time` : zoneName(event.timezone, utc);
-  return `${daysSummary(event.dates)}, ${timeRange(event.startMinute, event.endMinute)}, ${zone}`;
+  const zone = event.zoneKnown === false ? `${event.timezone.replace(/_/g, ' ')} time` : zoneWords(event.timezone, utc);
+  return `${daysSummary(event.dates)}, ${hoursRange(event.startMinute, event.endMinute)}, ${zone}`;
 }
 
 /** "3 minutes ago" */

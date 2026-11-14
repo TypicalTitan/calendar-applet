@@ -21,7 +21,7 @@ export function verifyPanel(account, onConfirmed) {
         toast('Email confirmed');
         onConfirmed();
       } else if (askedByPerson) {
-        note.textContent = 'Not confirmed yet. Open the link in the email first, then try again.';
+        note.textContent = 'Not confirmed yet. Open the link in the email first.';
       }
     } catch (error) {
       if (askedByPerson) note.textContent = error.message;
@@ -33,7 +33,7 @@ export function verifyPanel(account, onConfirmed) {
     resend.disabled = true;
     try {
       await resendVerification();
-      note.textContent = 'Sent. It can take a few minutes to arrive.';
+      note.textContent = 'Sent. Can take a few minutes.';
     } catch (error) {
       note.textContent = error.message;
     }
@@ -46,10 +46,10 @@ export function verifyPanel(account, onConfirmed) {
   document.addEventListener('visibilitychange', onReturn);
 
   return {
-    el: h('section', { class: 'sheet stack', 'aria-labelledby': 'verify-title' },
+    el: h('section', { class: 'stack', 'aria-labelledby': 'verify-title' },
       h('h2', { id: 'verify-title' }, 'Confirm your email'),
-      h('p', null, 'We sent a link to ', h('b', null, account.email), '. Open it to show the address is yours, then come back here. You can create events as soon as that’s done.'),
-      h('p', { class: 'muted' }, 'The email can take a few minutes and sometimes lands in spam. Typed the wrong address? Delete this account on the ', h('a', { href: '#/account' }, 'Account page'), ' and sign up again.'),
+      h('p', null, 'Open the link sent to ', h('b', null, account.email), ', then come back here. You can make events after that.'),
+      h('p', { class: 'muted' }, 'Not there? Give it a few minutes and check spam. Wrong address? Delete this account on the ', h('a', { href: '#/account' }, 'Account page'), ' and sign up again.'),
       h('div', { class: 'row' }, check, resend),
       note),
     dispose() {

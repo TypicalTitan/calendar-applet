@@ -55,6 +55,19 @@ Rules of thumb when judging or rewriting a piece of text:
 
 Limits on that: a stranger who has never seen the site (a friend opening an invite link on a phone) must still understand every page without help. Labels and error messages must stay specific enough to act on and to make sense read aloud by a screen reader. The sign-in and reset messages must keep giving the same answer whether or not an account exists.
 
+## Choices already made
+
+These came out of the first review. Do not report them as problems, and say so if a change undoes one.
+
+- The home page is one line (the owner's own: "Schedule things with your friends."), a few short sentences with their example, one button, and the working example. No list of steps or benefits.
+- White paper is for the timetable and for dialogs. Everything else sits straight on the page, with a rule above each part. No panels, tiles, tags or pills.
+- Green only means "free". Ink for everything else, including "Saved".
+- One typeface. Wide and heavy for names of things, narrow for times.
+- One filled button per page. Everything secondary is a quiet button or a plain underlined link, with no icon beside the word.
+- The event page shows the link, the grid, the best times and who answered. Downloads and close, edit, delete are a line of links at the bottom. Until someone answers it shows only the link and the empty grid.
+- The invite page offers no account, says nothing about time zones unless the visitor's clock differs, and gives one instruction (tap or click, whichever fits the device).
+- Words: "you" and "your friends"; "the person who made this event" when talking to a friend; "answers", "times", "blocks", "hours". Not organizer, invitee, response, slot, window, export, manage.
+
 ## How to review
 
 1. See the pages as rendered, not just the code. `npm run shots` (with the Firebase emulators it starts) writes a screenshot of every page into `docs/shots/`: home, sign-up, the confirm-your-email step, the events list, the new-event form, the invite page on a phone and a desktop, the results page (light, dark, phone, table view), the account page and the setup page. If screenshots already exist and are current, read those. Say plainly if you could not look at a rendered page and are judging from code.

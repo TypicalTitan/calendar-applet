@@ -102,3 +102,22 @@ test('the invite page fits a phone screen without sideways scrolling', async ({ 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test('on a phone the instructions talk about tapping, not clicking', async ({ page }) => {
+  await page.goto('#/new');
+  await expect(page.getByText('Tap the days you want.')).toBeVisible();
+  const { link } = await createEvent(page);
+  await page.goto(link);
+  await expect(page.getByText('Tap the times you’re free.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('main').getByText('Click', { exact: false })).toHaveCount(0);
+});
+
+test('the signed-in menu sits on one line on a phone, and nothing sticks out sideways', async ({ page }) => {
+  await page.goto('#/events');
+  await expect(page.getByRole('heading', { name: 'Your events' })).toBeVisible();
+  const tops = await page.getByRole('navigation', { name: 'Account' }).locator('a, button')
+    .evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().top)));
+  expect(tops).toHaveLength(3);
+  expect(new Set(tops).size).toBe(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});

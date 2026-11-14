@@ -1,13 +1,13 @@
-// Create an event: a name, the days, a daily time window, a slot length and a time zone.
+// Create an event: a name, the days, the hours each day, the size of the blocks, and a time zone.
 
-import { h, field, uid, toast } from '../ui/dom.js';
+import { h, field, uid, touchFirst } from '../ui/dom.js';
 import { createDatePicker } from '../ui/calendar.js';
 import { createEvent, getAccount } from '../backend.js';
 import { verifyPanel } from './verify.js';
 import { validateEvent, endMinuteFor, LIMITS } from '../core/validate.js';
 import { listTimeZones, localTimeZone } from '../core/tz.js';
 import { todayIn, addDays } from '../core/dates.js';
-import { timeLabel, zoneLabel, plural, duration, daysSummary } from '../ui/format.js';
+import { timeLabel, zoneLabel } from '../ui/format.js';
 
 const SLOT_CHOICES = [[15, '15 minutes'], [30, '30 minutes'], [60, '1 hour']];
 
@@ -29,17 +29,18 @@ export function newEventView({ navigate }) {
   const title = field({
     label: 'Event name',
     control: h('input', { class: 'input', type: 'text', name: 'title', maxlength: LIMITS.titleMax, required: true, autocomplete: 'off' }),
-    hint: 'Invitees see this at the top of the page, for example “Board game weekend”.',
+    hint: 'For example, Board game weekend.',
   });
   const note = field({
-    label: 'Note for invitees',
+    label: 'Note',
     optional: true,
     control: h('textarea', { class: 'textarea', name: 'description', maxlength: LIMITS.descriptionMax, rows: 3 }),
+    hint: 'Your friends see it under the name.',
   });
 
   const picker = createDatePicker({
     min: today, max: addDays(today, 365), limit: LIMITS.maxDays, label: 'Days',
-    onChange: (next) => { dates = next; datesError.hidden = true; summarize(); },
+    onChange: (next) => { dates = next; datesError.hidden = true; },
   });
   const datesLabel = uid('days');
   const datesError = h('span', { class: 'error', role: 'alert', hidden: true });
@@ -56,7 +57,7 @@ export function newEventView({ navigate }) {
   const fromField = field({ label: 'From', control: from });
   const toField = field({ label: 'To', control: to });
   const timeError = h('span', { class: 'error', role: 'alert', hidden: true });
-  const overnight = h('span', { class: 'hint', hidden: true }, 'The end is earlier than the start, so each day’s window runs past midnight into the next day.');
+  const overnight = h('span', { class: 'hint', hidden: true }, 'The end is before the start, so each day runs past midnight.');
 
   const slotName = uid('slot');
   const slot = h('div', { class: 'segmented', role: 'radiogroup', 'aria-labelledby': `${slotName}-label` },
@@ -67,9 +68,8 @@ export function newEventView({ navigate }) {
   const zones = listTimeZones().filter((z) => !z.startsWith('Etc/') || z === zone);
   const zoneSelect = h('select', { class: 'select', name: 'timezone' },
     zones.map((z) => h('option', { value: z, selected: z === zone }, zoneLabel(z))));
-  const zoneField = field({ label: 'Time zone', control: zoneSelect, hint: 'The window above is in this time zone. Invitees elsewhere see it converted to theirs.' });
+  const zoneField = field({ label: 'Time zone', control: zoneSelect, hint: 'Friends in other time zones see their own times.' });
 
-  const summary = h('p', { class: 'status-line', 'aria-live': 'polite' });
   const error = h('p', { class: 'form-error', role: 'alert', hidden: true });
   const submit = h('button', { type: 'submit', class: 'btn' }, 'Create event');
 
@@ -86,36 +86,29 @@ export function newEventView({ navigate }) {
     };
   }
 
-  function summarize() {
-    const input = read();
-    overnight.hidden = Number(to.value) > input.startMinute;
-    const length = input.endMinute - input.startMinute;
-    if (dates.length === 0) { summary.textContent = ''; return; }
-    if (length % input.slotMinutes !== 0) { summary.textContent = ''; return; }
-    const perDay = length / input.slotMinutes;
-    summary.textContent = `${daysSummary(dates)}, ${duration(length)} a day: ${plural(perDay * dates.length, 'time slot', 'time slots')} for people to mark.`;
-  }
+  // An end at or before the start means each day runs past midnight. Say so when that is picked.
+  const noteOvernight = () => { overnight.hidden = Number(to.value) > Number(from.value); };
 
-  for (const control of [from, to, zoneSelect]) control.addEventListener('change', () => { timeError.hidden = true; summarize(); });
-  slot.addEventListener('change', () => { timeError.hidden = true; summarize(); });
+  for (const control of [from, to, zoneSelect]) control.addEventListener('change', () => { timeError.hidden = true; noteOvernight(); });
+  slot.addEventListener('change', () => { timeError.hidden = true; });
 
   const form = h('form', { class: 'stack stack-l', novalidate: true },
-    h('div', { class: 'sheet stack' }, title.el, note.el),
-    h('fieldset', { class: 'sheet stack' },
+    h('div', { class: 'stack' }, title.el, note.el),
+    h('fieldset', { class: 'part stack' },
       h('legend', { class: 'legend', id: datesLabel }, 'Days'),
-      h('p', { class: 'muted small' }, 'Click a day to add it. Drag, or Shift+click, to add several.'),
+      h('p', { class: 'muted small' }, touchFirst() ? 'Tap the days you want.' : 'Click the days you want. Drag to add several.'),
       picker.el, datesError),
-    h('fieldset', { class: 'sheet stack' },
+    h('fieldset', { class: 'part stack' },
       h('legend', { class: 'legend' }, 'Time each day'),
       h('div', { class: 'pair' }, fromField.el, toField.el),
       overnight,
       h('div', { class: 'field' },
-        h('span', { class: 'label', id: `${slotName}-label` }, 'Slot length'),
+        h('span', { class: 'label', id: `${slotName}-label` }, 'In blocks of'),
         slot,
-        h('span', { class: 'hint' }, 'How finely people mark their time. Shorter slots mean more precision and more tapping.')),
+        h('span', { class: 'hint' }, 'Smaller blocks mean more tapping.')),
       timeError,
       zoneField.el),
-    summary, error,
+    error,
     h('div', { class: 'row' }, submit, h('a', { class: 'btn btn-quiet', href: '#/events' }, 'Cancel')));
 
   form.addEventListener('submit', async (e) => {
@@ -141,7 +134,6 @@ export function newEventView({ navigate }) {
     submit.disabled = true;
     try {
       const id = await createEvent(checked.value);
-      toast('Event created');
       navigate(`/e/${id}/results`);
     } catch (err) {
       error.textContent = err.message;
@@ -150,7 +142,7 @@ export function newEventView({ navigate }) {
     }
   });
 
-  summarize();
+  noteOvernight();
 
   return {
     title: 'New event',
@@ -158,7 +150,7 @@ export function newEventView({ navigate }) {
     el: h('div', { class: 'stack' },
       h('div', { class: 'page-head' }, h('div', null,
         h('h1', null, 'New event'),
-        h('p', null, 'Choose the days and hours you’re considering. You’ll get a link to send; everyone marks when they’re free.'))),
+        h('p', null, 'Pick the days and hours. You get a link to send.'))),
       form),
   };
 }

@@ -29,7 +29,7 @@ export function signInView() {
   const password = field({ label: 'Password', control: input({ type: 'password', name: 'password', autocomplete: 'current-password', required: true }) });
   const error = h('p', { class: 'form-error', role: 'alert', hidden: true });
   const button = h('button', { type: 'submit', class: 'btn btn-block' }, 'Sign in');
-  const form = h('form', { class: 'sheet stack', method: 'post', novalidate: true }, email.el, password.el, error, button);
+  const form = h('form', { class: 'stack', method: 'post', novalidate: true }, email.el, password.el, error, button);
 
   submitter(form, button, error, async () => {
     await signIn({ email: email.input.value.trim(), password: password.input.value });
@@ -40,7 +40,7 @@ export function signInView() {
     narrow: true,
     el: h('div', { class: 'stack' },
       h('h1', null, 'Sign in'),
-      h('p', { class: 'muted' }, 'For organizers. If someone sent you an invite link, you don’t need an account: just open the link.'),
+      h('p', { class: 'muted' }, 'Only for making events. Got an invite link? Just open it.'),
       form,
       h('p', null, h('a', { href: '#/reset' }, 'Forgot your password?')),
       h('p', null, 'New here? ', h('a', { href: '#/sign-up' }, 'Create an account'))),
@@ -48,12 +48,12 @@ export function signInView() {
 }
 
 export function signUpView() {
-  const name = field({ label: 'Your name', control: input({ type: 'text', name: 'name', autocomplete: 'name', maxlength: 60, required: true }), hint: 'Invitees don’t see this. It fills in your name when you answer your own events.' });
-  const email = field({ label: 'Email', control: input({ type: 'email', name: 'email', autocomplete: 'username', required: true, inputMode: 'email', autocapitalize: 'none' }), hint: 'We send one message to confirm the address, and password resets if you ask for them.' });
-  const password = field({ label: 'Password', control: input({ type: 'password', name: 'new-password', autocomplete: 'new-password', required: true, minlength: PASSWORD_MIN, maxlength: 128 }), hint: `At least ${PASSWORD_MIN} characters. A few unrelated words work well, and so does a password manager.` });
+  const name = field({ label: 'Your name', control: input({ type: 'text', name: 'name', autocomplete: 'name', maxlength: 60, required: true }), hint: 'Fills in your name when you add your own times.' });
+  const email = field({ label: 'Email', control: input({ type: 'email', name: 'email', autocomplete: 'username', required: true, inputMode: 'email', autocapitalize: 'none' }), hint: 'Only used to confirm it’s you and to reset your password.' });
+  const password = field({ label: 'Password', control: input({ type: 'password', name: 'new-password', autocomplete: 'new-password', required: true, minlength: PASSWORD_MIN, maxlength: 128 }), hint: `At least ${PASSWORD_MIN} characters. A few random words will do.` });
   const error = h('p', { class: 'form-error', role: 'alert', hidden: true });
   const button = h('button', { type: 'submit', class: 'btn btn-block' }, 'Create account');
-  const form = h('form', { class: 'sheet stack', method: 'post', novalidate: true }, name.el, email.el, password.el, error, button);
+  const form = h('form', { class: 'stack', method: 'post', novalidate: true }, name.el, email.el, password.el, error, button);
 
   submitter(form, button, error, async () => {
     const cleanName = tidyLine(name.input.value).slice(0, 60);
@@ -72,7 +72,7 @@ export function signUpView() {
     narrow: true,
     el: h('div', { class: 'stack' },
       h('h1', null, 'Create an account'),
-      h('p', { class: 'muted' }, 'An account lets you create events and see who is free. The people you invite never need one.'),
+      h('p', { class: 'muted' }, 'You need one to make events. Your friends don’t.'),
       form,
       h('p', null, 'Already have an account? ', h('a', { href: '#/sign-in' }, 'Sign in'))),
   };
@@ -83,7 +83,7 @@ export function resetView() {
   const error = h('p', { class: 'form-error', role: 'alert', hidden: true });
   const done = h('p', { class: 'banner banner-plain', role: 'status', hidden: true });
   const button = h('button', { type: 'submit', class: 'btn btn-block' }, 'Send reset link');
-  const form = h('form', { class: 'sheet stack', method: 'post', novalidate: true }, email.el, error, button);
+  const form = h('form', { class: 'stack', method: 'post', novalidate: true }, email.el, error, button);
 
   submitter(form, button, error, async () => {
     const address = email.input.value.trim();
@@ -91,7 +91,7 @@ export function resetView() {
     if (email.input.getAttribute('aria-invalid') === 'true') { email.input.focus(); return; }
     await requestPasswordReset(address);
     // The same message whether or not the address has an account.
-    done.textContent = `If ${address} has an account, a link to choose a new password is on its way. It can take a few minutes; check your spam folder too.`;
+    done.textContent = `If ${address} has an account, a reset link is on its way. Check spam if it doesn’t show up.`;
     done.hidden = false;
     form.hidden = true;
   });
@@ -101,7 +101,7 @@ export function resetView() {
     narrow: true,
     el: h('div', { class: 'stack' },
       h('h1', null, 'Reset your password'),
-      h('p', { class: 'muted' }, 'Enter the email you signed up with and we’ll send a link to choose a new password.'),
+      h('p', { class: 'muted' }, 'Put in your email to get a reset link.'),
       form, done,
       h('p', null, h('a', { href: '#/sign-in' }, 'Back to sign in'))),
   };

@@ -1,5 +1,5 @@
-// The organizer's view of an event: the invite link, who has answered, a grid shaded by how many
-// people are free, the best times, and CSV export.
+// What the person who made an event sees: the invite link, a grid shaded by how many people are
+// free, the best times, who has answered, and the spreadsheet downloads.
 
 import { h, replace, icon, toast, confirmDialog, copyText, downloadFile, field, uid } from '../ui/dom.js';
 import { createHeatGrid, heatLegend } from '../ui/grid.js';
@@ -20,14 +20,14 @@ const REFRESH_MS = 60_000;
 export function resultsView({ params, navigate, appName, signInThenReturn }) {
   const [eventId] = params;
 
-  // Someone who is not signed in was probably sent the organizer's own address by mistake.
-  // Point them at the invite page rather than at a sign-in form they have no use for.
+  // Someone who is not signed in was probably sent this address by mistake. Point them at the
+  // invite page rather than at a sign-in form they have no use for.
   if (!getAccount()) {
     return messageView({
-      title: 'This page is for the organizer',
-      body: 'Only the organizer can see the answers to an event. If you were invited, add your own times instead.',
+      title: 'This page is for whoever made the event',
+      body: 'Only the person who made this event can see the answers. If you were invited, add your own times instead.',
       action: { href: `#/e/${eventId}`, label: 'Add my times' },
-      secondary: { onclick: signInThenReturn, label: 'I’m the organizer' },
+      secondary: { onclick: signInThenReturn, label: 'I made this event' },
     });
   }
 
@@ -41,14 +41,14 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
       replace(holder, messageView({
         title: 'We can’t find that event',
         body: 'It may have been deleted, or the address may be cut short.',
-        action: { href: '#/events', label: 'Go to your events' },
+        action: { href: '#/events', label: 'Your events' },
       }).el);
       return;
     }
     if (event.ownerUid !== getAccount()?.uid) {
       replace(holder, messageView({
         title: event.title,
-        body: 'Only the organizer can see the answers to an event. If you were invited, you can add your own times.',
+        body: 'Only the person who made this event can see the answers. If you were invited, add your own times instead.',
         action: { href: `#/e/${event.id}`, label: 'Add my times' },
       }).el);
       return;
@@ -75,17 +75,15 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
     // ---- invite link
     const linkId = uid('link');
     const linkInput = h('input', { class: 'input', id: linkId, type: 'text', readonly: true, value: inviteUrl, 'aria-describedby': `${linkId}-hint`, onfocus: (e) => e.target.select() });
-    const copy = h('button', { type: 'button', class: 'btn' }, icon('copy'), 'Copy link');
+    const linkHint = h('span', { class: 'hint', id: `${linkId}-hint` });
+    const copy = h('button', { type: 'button', class: 'btn' }, 'Copy link');
     copy.addEventListener('click', async () => {
       if (await copyText(inviteUrl)) toast('Link copied');
       else { linkInput.focus(); linkInput.select(); toast('Press Ctrl+C or ⌘C to copy the link'); }
     });
     const share = navigator.share
-      ? h('button', { type: 'button', class: 'btn btn-quiet', onclick: () => navigator.share({ title: event.title, text: `When are you free for ${event.title}?`, url: inviteUrl }).catch(() => {}) }, icon('share'), 'Share')
+      ? h('button', { type: 'button', class: 'btn btn-quiet', onclick: () => navigator.share({ title: event.title, text: `When are you free for ${event.title}?`, url: inviteUrl }).catch(() => {}) }, 'Share')
       : null;
-
-    // ---- figures
-    const figures = h('dl', { class: 'figures' });
 
     // ---- grid, legend, table
     const detail = h('div', { class: 'stack stack-s' });
@@ -100,16 +98,16 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
 
     const legendHolder = h('div');
     const gridHolder = h('div');
-    const tableToggle = h('button', { type: 'button', class: 'btn btn-quiet btn-small', 'aria-pressed': 'false' }, icon('table'), 'Show as a table');
+    const tableToggle = h('button', { type: 'button', class: 'linklike' }, 'Show as a table');
     tableToggle.addEventListener('click', () => {
       showTable = !showTable;
-      tableToggle.setAttribute('aria-pressed', String(showTable)); // the label stays; "pressed" says which view is on
+      tableToggle.textContent = showTable ? 'Show as a grid' : 'Show as a table'; // the button names the other view
       drawGridArea();
     });
-    const refresh = h('button', { type: 'button', class: 'btn btn-quiet btn-small' }, icon('refresh'), 'Refresh');
+    const refresh = h('button', { type: 'button', class: 'linklike' }, 'Refresh');
     refresh.addEventListener('click', () => reload({ announce: true, full: true }));
 
-    // ---- side panels
+    // ---- beside and under the grid
     const peopleTitle = h('h2', { id: uid('people'), tabindex: '-1' });
     const peopleList = h('ul', { class: 'people' });
     const bestList = h('ol', { class: 'best' });
@@ -120,11 +118,10 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
     for (const m of lengths) lengthSelect.append(h('option', { value: String(m) }, duration(m)));
     lengthSelect.value = String(lengths.includes(60) ? 60 : lengths[0]);
     lengthSelect.addEventListener('change', () => { pinnedKey = null; drawBest(); });
-    const lengthField = field({ label: 'For a meeting of', control: lengthSelect });
+    const lengthField = field({ label: 'How long', control: lengthSelect });
 
-    // ---- state line and actions
-    const stateTag = h('span', { class: 'tag' });
-    const toggleOpen = h('button', { type: 'button', class: 'btn btn-quiet' });
+    // ---- closing, reopening, deleting
+    const toggleOpen = h('button', { type: 'button', class: 'linklike' });
     let toggling = false;
     toggleOpen.addEventListener('click', async () => {
       if (toggling) return; // guarded, not disabled: disabling a button throws away keyboard focus
@@ -137,11 +134,11 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
       } catch (error) { toast(error.message, { error: true }); }
       toggling = false;
     });
-    const remove = h('button', { type: 'button', class: 'btn btn-danger' }, icon('trash'), 'Delete event');
+    const remove = h('button', { type: 'button', class: 'linklike danger' }, 'Delete event');
     remove.addEventListener('click', async () => {
       const ok = await confirmDialog({
         title: `Delete “${event.title}”?`,
-        body: `This deletes the event and ${answers.length ? plural(answers.length, 'answer', 'answers') : 'its invite link'} for good. The invite link stops working.`,
+        body: `Deletes the event${answers.length ? ` and its ${plural(answers.length, 'answer', 'answers')}` : ''} for good. The invite link stops working.`,
         confirmLabel: 'Delete event',
         danger: true,
       });
@@ -162,15 +159,17 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
       headNote.hidden = !event.description;
       document.title = `${event.title} · ${appName}`;
     }
-    const editDetails = h('button', { type: 'button', class: 'btn btn-quiet' }, 'Edit name and note');
+    const editDetails = h('button', { type: 'button', class: 'linklike' }, 'Edit name and note');
     editDetails.addEventListener('click', () => {
       const title = field({ label: 'Event name', control: h('input', { class: 'input', type: 'text', maxlength: LIMITS.titleMax, value: event.title, autocomplete: 'off' }) });
-      const note = field({ label: 'Note for invitees', optional: true, control: h('textarea', { class: 'textarea', maxlength: LIMITS.descriptionMax, rows: 3 }) });
+      const note = field({ label: 'Note', optional: true, control: h('textarea', { class: 'textarea', maxlength: LIMITS.descriptionMax, rows: 3 }) });
       note.input.value = event.description;
       const failure = h('p', { class: 'form-error', role: 'alert', hidden: true });
       confirmDialog({
         title: 'Edit name and note',
-        body: h('div', { class: 'stack' }, title.el, note.el, failure),
+        body: h('div', { class: 'stack' }, title.el, note.el,
+          h('p', { class: 'muted small' }, 'The days and hours can’t be changed. Make a new event for that.'),
+          failure),
         confirmLabel: 'Save changes',
         onConfirm: async () => {
           const checked = validateEvent({ ...event, title: title.input.value, description: note.input.value });
@@ -196,11 +195,11 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
 
     // Files use the event's own time zone, or the reader's if this browser does not know that zone.
     const exportZone = event.zoneKnown === false ? localTimeZone() : event.timezone;
-    const exportGrid = h('button', { type: 'button', class: 'btn btn-quiet' }, icon('download'), 'Time-slot grid (.csv)');
+    const exportGrid = h('button', { type: 'button', class: 'linklike' }, 'Download by time (.csv)');
     exportGrid.addEventListener('click', () => {
       downloadFile(exportFileName(event.title, 'grid'), toCsv(gridRows(event, slots, answers, exportZone)));
     });
-    const exportPeople = h('button', { type: 'button', class: 'btn btn-quiet' }, icon('download'), 'Free time by person (.csv)');
+    const exportPeople = h('button', { type: 'button', class: 'linklike' }, 'Download by person (.csv)');
     exportPeople.addEventListener('click', () => {
       downloadFile(exportFileName(event.title, 'people'), toCsv(rangeRows(event, slots, answers, exportZone)));
     });
@@ -211,29 +210,18 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
       return `${longDate(wall.date)}, ${timeRange(wall.startMinute, wall.endMinute)}`;
     };
 
+    // The line under the link says whether it still takes answers. Changing only the button's
+    // words keeps the keyboard focus on it.
     function drawState() {
-      replace(stateTag, event.open ? 'Open for answers' : [icon('lock'), 'Closed to new answers']);
-      replace(toggleOpen, icon(event.open ? 'lock' : 'unlock'), event.open ? 'Close responses' : 'Reopen responses');
-    }
-
-    function drawFigures() {
-      const total = answers.length;
-      const most = counts.reduce((a, b) => Math.max(a, b), 0);
-      const everyone = total ? counts.filter((n) => n === total).length * event.slotMinutes : 0;
-      const latest = answers.reduce((max, a) => Math.max(max, a.updatedAt || 0), 0);
-      const figure = (label, value, small) => h('div', { class: 'figure' }, h('dt', null, label), h('dd', null, value, small ? h('small', null, small) : null));
-      replace(figures,
-        figure('Answers', String(total)),
-        figure('Most free at once', total ? `${most} of ${total}` : '–'),
-        figure('Everyone is free for', total ? (everyone ? duration(everyone) : 'No time yet') : '–', total > 1 && everyone ? 'in total, across all days' : null),
-        figure('Latest answer', latest ? ago(latest) : '–'));
+      linkHint.textContent = event.open
+        ? 'Anyone with this link can add their times. No account needed.'
+        : 'Closed to new answers. The link still opens, but nobody can add or change times.';
+      toggleOpen.textContent = event.open ? 'Close event' : 'Reopen event';
     }
 
     function drawDetail(index) {
       if (index < 0 || index === undefined) {
-        replace(detail, h('p', { class: 'muted' }, answers.length
-          ? 'Pick a time on the grid to see who is free then.'
-          : 'When people answer, pick a time on the grid to see who is free then.'));
+        replace(detail, h('p', { class: 'muted' }, 'Pick a time to see who’s free then.'));
         return;
       }
       const free = [];
@@ -246,20 +234,26 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
         busy.length ? h('p', { class: 'names' }, h('b', null, 'Not free: '), listNames(busy)) : null);
     }
 
-    const capNote = h('p', { class: 'banner', hidden: true }, `Showing ${ANSWER_LIMIT} answers, the most this page loads at once. There may be more.`);
+    const capNote = h('p', { class: 'banner', hidden: true }, `Showing the first ${ANSWER_LIMIT} answers. There may be more.`);
+    const emptyNote = h('p', { class: 'muted' }, 'Send the link. Names show up here as people answer.');
+    const downloads = h('p', { class: 'links muted no-print' }, 'Spreadsheet:', exportGrid, exportPeople);
 
     function drawPeople() {
+      const none = answers.length === 0;
       capNote.hidden = answers.length < ANSWER_LIMIT;
-      peopleTitle.textContent = answers.length ? plural(answers.length, 'answer', 'answers') : 'No answers yet';
-      if (answers.length === 0) {
-        replace(peopleList, h('li', null, h('p', { class: 'muted' }, 'Send the invite link to the people you want to hear from. Their names appear here as they answer.')));
+      peopleTitle.textContent = none ? 'No answers yet' : plural(answers.length, 'answer', 'answers');
+      emptyNote.hidden = !none;
+      peopleList.hidden = none;
+      downloads.hidden = none;
+      if (none) {
+        replace(peopleList);
         return;
       }
       replace(peopleList, answers.map((a) => {
         const marked = [...a.slots].filter((c) => c === '1').length * event.slotMinutes;
         const who = h('button', { type: 'button', class: 'who', dataset: { key: `who:${a.id}` }, 'aria-pressed': String(isolated === a.id), title: 'Show only this person’s times' },
           h('span', { class: 'n' }, a.name),
-          h('span', { class: 'm' }, `${marked ? `${duration(marked)} free` : 'Not free at any time'}${a.updatedAt ? `, answered ${ago(a.updatedAt)}` : ''}`));
+          h('span', { class: 'm' }, `${marked ? `${duration(marked)} free` : 'Nothing marked'}${a.updatedAt ? `, answered ${ago(a.updatedAt)}` : ''}`));
         who.addEventListener('click', () => showOnly(isolated === a.id ? null : a.id));
         const del = h('button', { type: 'button', class: 'icon-btn', dataset: { key: `del:${a.id}` }, 'aria-label': `Remove ${a.name}` }, icon('trash'));
         del.addEventListener('click', async () => {
@@ -315,9 +309,9 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
       const length = Number(lengthSelect.value) / event.slotMinutes;
       const blocks = bestWindows(slots, answers.map((a) => a.slots), length, 5);
       if (blocks.length === 0) {
-        replace(bestList, h('li', null, h('p', { class: 'muted' }, answers.length
-          ? 'Nobody has marked a stretch that long. Try a shorter meeting.'
-          : 'The best times appear here once people answer.')));
+        replace(bestList, answers.length
+          ? h('li', null, h('p', { class: 'muted' }, 'Nobody has marked a stretch that long. Try a shorter one.'))
+          : null);
         blocksShown = new Map();
         showPinned();
         return;
@@ -337,8 +331,7 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
         blocksShown.set(key, Array.from({ length: last - first + 1 }, (_, i) => first + i));
         const button = h('button', { type: 'button', dataset: { key }, 'aria-pressed': 'false' },
           h('span', { class: 't' }, `${shortDate(a.date)}, ${timeRange(a.startMinute, b.endMinute)}`),
-          h('span', { class: 'c' }, `${block.count === answers.length && answers.length > 1 ? `All ${block.count}` : `${block.count} of ${answers.length}`} free. ${flexible}${missing.length ? `Missing: ${listNames(missing)}.` : ''}`),
-          h('span', { class: 'meter', 'aria-hidden': 'true' }, h('i', { style: { '--t': String(block.count / answers.length) } })));
+          h('span', { class: 'c' }, `${block.count === answers.length && answers.length > 1 ? `All ${block.count}` : `${block.count} of ${answers.length}`} free. ${flexible}${missing.length ? `Missing: ${listNames(missing)}.` : ''}`));
         button.addEventListener('click', () => {
           pinnedKey = pinnedKey === key ? null : key;
           showPinned();
@@ -377,7 +370,7 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
       } else if (gridHolder.firstChild !== grid.el) {
         replace(gridHolder, grid.el); // otherwise left alone: re-attaching it would lose its scroll position
       }
-      replace(legendHolder, showTable ? null : person
+      replace(legendHolder, showTable || answers.length === 0 ? null : person
         ? h('p', { class: 'legend-scale' }, `Showing only ${person.name}’s free times. `, h('button', { type: 'button', class: 'linklike', onclick: () => showOnly(null) }, 'Show everyone'))
         : heatLegend(counts, answers.length));
     }
@@ -388,8 +381,10 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
       const focused = document.activeElement?.dataset?.key;
       counts = countAvailable(answers.map((a) => a.slots), slots.count);
       if (isolated && !answers.some((a) => a.id === isolated)) isolated = null;
+      // Until someone answers there is nothing to compare: just the link and the empty grid.
+      side.hidden = answers.length === 0;
+      layout.classList.toggle('is-empty', answers.length === 0);
       drawState();
-      drawFigures();
       drawGridArea();
       drawPeople();
       drawBest();
@@ -450,33 +445,28 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
     document.addEventListener('visibilitychange', onVisible);
 
     const at = slots.utc[0];
+    const side = h('div', { class: 'results-side stack' },
+      h('section', { class: 'detail', 'aria-label': 'Selected time', 'aria-live': 'polite' }, detail),
+      h('section', { class: 'part', 'aria-label': 'Best times' },
+        h('h2', null, 'Best times'), lengthField.el, bestList));
+    const layout = h('div', { class: 'results' },
+      h('section', { class: 'sheet stack results-grid', 'aria-label': 'Who is free when' },
+        chooser.el,
+        gridHolder,
+        h('div', { class: 'row' }, legendHolder, h('div', { class: 'links grid-tools no-print' }, tableToggle, refresh))),
+      side,
+      h('section', { class: 'part results-people stack', 'aria-labelledby': peopleTitle.id },
+        peopleTitle, capNote, emptyNote, peopleList, downloads));
     replace(holder, h('div', { class: 'stack stack-l' },
       h('div', { class: 'page-head' },
-        h('div', null, headTitle, h('p', null, eventSummary(event, at)), headNote),
-        stateTag),
-      h('section', { class: 'sheet field', 'aria-label': 'Invite' },
+        h('div', null, headTitle, h('p', null, eventSummary(event, at)), headNote)),
+      h('section', { class: 'field', 'aria-label': 'Invite' },
         h('label', { for: linkId }, 'Invite link'),
         h('div', { class: 'invite-row' }, linkInput, copy, share),
-        h('span', { class: 'hint', id: `${linkId}-hint` }, 'Anyone with this link can add their times. They don’t need an account or a password.')),
-      figures,
-      h('div', { class: 'results' },
-        h('section', { class: 'sheet stack results-grid', 'aria-label': 'Who is free when' },
-          h('div', { class: 'row row-between' }, chooser.el, h('div', { class: 'row no-print' }, tableToggle, refresh)),
-          gridHolder,
-          legendHolder),
-        h('div', { class: 'results-side stack' },
-          h('section', { class: 'sheet detail', 'aria-label': 'Selected time', 'aria-live': 'polite' }, detail),
-          h('section', { class: 'sheet', 'aria-label': 'Best times' },
-            h('h2', null, 'Best times'), lengthField.el, bestList)),
-        h('section', { class: 'sheet results-people stack', 'aria-labelledby': peopleTitle.id }, peopleTitle, capNote, peopleList)),
-      h('section', { class: 'sheet stack no-print', 'aria-label': 'Export' },
-        h('h2', null, 'Export'),
-        h('p', { class: 'muted' }, 'Download every answer as a spreadsheet file. The grid has a row for each time slot and a column for each person; the other lists each person’s free stretches.'),
-        h('div', { class: 'row' }, exportGrid, exportPeople)),
-      h('section', { class: 'sheet stack no-print', 'aria-label': 'Manage' },
-        h('h2', null, 'Manage'),
-        h('p', { class: 'muted' }, 'Close the event when you have enough answers: the link keeps working, but nobody can add or change times. The days and hours of an event can’t be changed once it is created; its name and note can.'),
-        h('div', { class: 'row' }, editDetails, toggleOpen, h('a', { class: 'btn btn-quiet', href: `#/e/${event.id}` }, 'Add my own times'), remove))));
+        linkHint),
+      layout,
+      h('p', { class: 'part links no-print' },
+        h('a', { class: 'linklike', href: `#/e/${event.id}` }, 'Add my own times'), editDetails, toggleOpen, remove)));
 
     drawHead();
     drawAll();

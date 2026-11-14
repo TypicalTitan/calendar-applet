@@ -1,6 +1,6 @@
 // The invite page: anyone with the link types a name and marks the times they are free.
 
-import { h, replace, field, toast, confirmDialog } from '../ui/dom.js';
+import { h, replace, field, toast, confirmDialog, touchFirst } from '../ui/dom.js';
 import { createPaintGrid } from '../ui/grid.js';
 import { zoneChooser } from '../ui/zone.js';
 import { getEvent, getMyAnswer, saveMyAnswer, deleteMyAnswer, getAccount, forgetGuest, SAVE_PAUSE } from '../backend.js';
@@ -25,14 +25,14 @@ export function respondView({ params }) {
       if (!event) {
         replace(holder, messageView({
           title: 'We can’t find that event',
-          body: 'The link may be cut short, or the organizer may have deleted the event. Ask them to send the link again.',
+          body: 'The link may be cut short, or the event was deleted. Ask whoever sent it.',
         }).el);
         return;
       }
       if (event === 'damaged') {
         replace(holder, messageView({
-          title: 'This event can’t be shown',
-          body: 'Its details are not in a form this site understands. Ask the organizer to create it again.',
+          title: 'This event is broken',
+          body: 'Something is wrong with how it was saved. Ask whoever made it to make a new one.',
         }).el);
         return;
       }
@@ -89,7 +89,6 @@ export function respondView({ params }) {
     const name = field({
       label: 'Your name',
       control: h('input', { class: 'input', type: 'text', name: 'name', autocomplete: 'name', maxlength: NAME_MAX, required: true, value: restored ? draft.name.slice(0, NAME_MAX) : startName }),
-      hint: 'So the organizer knows whose times these are.',
     });
     const keepDraft = () => {
       try { window.sessionStorage.setItem(draftKey, JSON.stringify({ name: name.input.value, slots: toAnswer(bits) })); } catch { /* private mode: no draft */ }
@@ -122,10 +121,11 @@ export function respondView({ params }) {
     zone = chooser.zone;
 
     const hintId = `grid-hint-${event.id}`;
+    const keysId = `${hintId}-keys`;
     const grid = createPaintGrid({
       event, slots, zone, value: bits, readOnly: !event.open,
       label: `Times for ${event.title}. Mark the ones you are free.`,
-      describedBy: event.open ? hintId : null,
+      describedBy: event.open ? `${hintId} ${keysId}` : null,
       onChange: (next) => {
         bits = next;
         dirty = true;
@@ -139,7 +139,7 @@ export function respondView({ params }) {
     showTally();
     if (restored) {
       dirty = true;
-      status.textContent = 'These changes are not saved yet.';
+      status.textContent = 'Not saved yet.';
     }
 
     clear.addEventListener('click', () => grid.clear());
@@ -152,7 +152,7 @@ export function respondView({ params }) {
       if (save.disabled) return;
       const cleaned = cleanName(name.input.value);
       if (!cleaned) {
-        name.setError('Enter your name so the organizer knows who you are.');
+        name.setError('Put in your name first.');
         name.input.focus();
         return;
       }
@@ -171,7 +171,7 @@ export function respondView({ params }) {
         name.input.value = cleaned;
         remove.hidden = false;
         status.classList.add('is-good');
-        status.textContent = `Saved. Thanks, ${cleaned}. You can change your times from this browser until the organizer closes the event.`;
+        status.textContent = 'Saved. You can change your times from this browser until the event is closed.';
       } catch (error) {
         status.textContent = '';
         formError.textContent = error.message;
@@ -185,7 +185,7 @@ export function respondView({ params }) {
       if (removing) return;
       const ok = await confirmDialog({
         title: 'Remove your answer?',
-        body: 'The organizer will no longer see your name or times for this event.',
+        body: 'Your name and times are deleted from this event.',
         confirmLabel: 'Remove my answer',
         danger: true,
       });
@@ -210,7 +210,7 @@ export function respondView({ params }) {
         bits = new Uint8Array(slots.count);
         grid.setValue(bits);
         showTally();
-        status.textContent = 'Your answer has been removed.';
+        status.textContent = 'Answer removed.';
       } catch (error) {
         status.textContent = '';
         formError.textContent = error.message;
@@ -224,12 +224,12 @@ export function respondView({ params }) {
     // Guests are recognised by their browser. On a shared computer the next person would
     // otherwise be editing the first person's answer without realising.
     const someoneElse = h('p', { class: 'banner banner-plain', hidden: !(existing && existing.as === 'guest') },
-      h('span', null, `These are the times saved from this browser as ${existing?.name || ''}. `),
+      h('span', null, `Saved from this browser as ${existing?.name || ''}. `),
       h('button', { type: 'button', class: 'linklike', onclick: startFresh }, 'Someone else? Add a separate answer'));
     async function startFresh() {
       const ok = await confirmDialog({
         title: 'Start a separate answer?',
-        body: `${saved?.name || 'The first person'}’s answer stays with the organizer, but it can no longer be changed or removed from this browser. Do this only if you are a different person.`,
+        body: `${saved?.name || 'The first person'}’s answer is kept, but it can’t be changed from this browser any more. Only do this if you’re someone else.`,
         confirmLabel: 'Start a separate answer',
       });
       if (!ok) return;
@@ -263,20 +263,24 @@ export function respondView({ params }) {
       h('p', null, eventSummary(event, at)),
       event.description ? h('p', { class: 'note-text' }, event.description) : null));
 
+    // No wider than the timetable needs: a name box a metre long over a narrow grid looks lost.
+    const width = { '--days': String(event.dates.length) };
+    const touch = touchFirst();
+
     const organizerNote = isOrganizer
       ? h('div', { class: 'banner banner-plain' },
-        h('p', null, 'You organized this event. This is the page your invitees see; you can add your own times here too.'),
+        h('p', null, 'You made this event. This is what your friends see. You can add your own times here too.'),
         h('a', { class: 'btn btn-quiet btn-small', href: `#/e/${event.id}/results` }, 'See the answers'))
       : null;
 
     if (!event.open) {
       // Closed: nothing can be added or changed, but what you saved is still yours to remove.
-      replace(holder, h('div', { class: 'stack' },
+      replace(holder, h('div', { class: 'stack invite', style: width },
         head, organizerNote,
         h('div', { class: 'banner' },
           h('p', null, saved
-            ? 'This event is closed. The organizer isn’t taking changes any more; here is what you saved.'
-            : 'This event is closed. The organizer isn’t taking new answers.')),
+            ? 'This event is closed. Your times can’t be changed now. Here’s what you saved.'
+            : 'This event is closed. No more answers.')),
         saved ? h('div', { class: 'sheet stack' }, chooser.el, grid.el, h('div', { class: 'tt-foot' }, tally)) : null,
         saved ? h('div', { class: 'row' }, remove) : null,
         formError, status));
@@ -287,18 +291,18 @@ export function respondView({ params }) {
         h('div', { class: 'sheet stack' },
           name.el,
           chooser.el,
-          h('p', { class: 'muted', id: hintId },
-            navigator.maxTouchPoints > 0
-              ? 'Tap a time to mark it. To mark several at once, press and hold, then drag. With a mouse, just drag.'
-              : 'Drag across the times you’re free. Start a drag on a marked time to clear instead.',
-            ' With a keyboard: arrow keys move, Space marks or clears a time, and Shift with an arrow key carries the mark along.'),
+          h('p', { class: 'muted', id: hintId }, touch
+            ? 'Tap the times you’re free. To mark several, press and hold, then drag.'
+            : 'Click or drag over the times you’re free. Do it again to unmark.'),
           grid.el,
-          h('div', { class: 'tt-foot' }, tally, clear)),
+          h('div', { class: 'tt-foot' }, tally, clear),
+          // Always in the page, so the grid can be described by it; shown where a keyboard is likely.
+          h('p', { class: touch ? 'vh' : 'muted small', id: keysId }, 'Keyboard: arrows move, Space marks or clears, Shift+arrow carries the mark along.')),
         formError,
         h('div', { class: 'row' }, save, remove),
         status,
-        h('p', { class: 'muted small' }, 'Your name and times are stored for this event’s organizer and shown to nobody else. You can change or remove them from this browser.'));
-      replace(holder, h('div', { class: 'stack' }, head, form));
+        h('p', { class: 'muted small' }, 'Only the person who made this event sees your name and times.'));
+      replace(holder, h('div', { class: 'stack invite', style: width }, head, form));
     }
 
     return () => {

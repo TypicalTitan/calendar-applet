@@ -25,7 +25,7 @@ test('an organizer creates an event, invitees answer by link, and the organizer 
 
   // CSV export: one row per time slot, one column per person.
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Time-slot grid (.csv)' }).click();
+  await page.getByRole('button', { name: 'Download by time (.csv)' }).click();
   const file = await download;
   expect(file.suggestedFilename()).toBe('board-game-weekend-grid.csv');
   const csv = await readFile(await file.path(), 'utf8');
@@ -36,7 +36,7 @@ test('an organizer creates an event, invitees answer by link, and the organizer 
   expect(lines[2]).toMatch(new RegExp(`^${days[0].iso},\\w{3},10:00,11:00,America/New_York,[^,]+,2,2,1,1$`));
 
   const download2 = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Free time by person (.csv)' }).click();
+  await page.getByRole('button', { name: 'Download by person (.csv)' }).click();
   const csv2 = await readFile(await (await download2).path(), 'utf8');
   expect(csv2).toContain(`Ana,${days[0].iso},`);
   expect(csv2).toContain(`Ben,${days[1].iso},`);
@@ -74,7 +74,7 @@ test('closing an event stops new answers, and the organizer can remove an answer
 
   await page.getByRole('button', { name: 'Refresh' }).click();
   await expect(page.getByText('1 answer', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Close responses' }).click();
+  await page.getByRole('button', { name: 'Close event' }).click();
   await expect(page.getByText('Closed to new answers')).toBeVisible();
 
   const late = await browser.newContext({ locale: 'en-US', timezoneId: 'America/New_York' });
@@ -162,7 +162,7 @@ test('one organizer cannot open another organizer\'s results', async ({ page, br
   const otherPage = await other.newPage();
   await signUp(otherPage, { name: 'Pete' });
   await otherPage.goto(`${link}/results`);
-  await expect(otherPage.getByText('Only the organizer can see the answers')).toBeVisible();
+  await expect(otherPage.getByText('Only the person who made this event can see the answers')).toBeVisible();
   await other.close();
 });
 

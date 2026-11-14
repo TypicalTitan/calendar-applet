@@ -133,7 +133,7 @@ export class FriendlyError extends Error {
   }
 }
 
-const OFFLINE = 'We couldn’t reach the server. Check your connection and try again.';
+const OFFLINE = 'The site couldn’t reach the server. Check your connection and try again.';
 
 function friendly(error, fallback) {
   const code = error?.code || '';
@@ -163,7 +163,7 @@ function friendly(error, fallback) {
     return new FriendlyError('This site isn’t fully set up yet: this kind of sign-in is switched off in its Firebase project.', code);
   }
   if (code === 'auth/requires-recent-login') {
-    return new FriendlyError('For your security, sign out, sign in again, and then retry.', code);
+    return new FriendlyError('Sign out, sign in again, then retry.', code);
   }
   if (code === 'permission-denied') {
     return new FriendlyError(fallback?.denied || 'You don’t have permission to do that.', code);
@@ -194,7 +194,7 @@ export const PASSWORD_MIN = 15;
  * policy (if the owner set one). Returns a message, or '' when the password is acceptable.
  */
 export async function passwordProblem(password) {
-  if (password.length < PASSWORD_MIN) return `Use at least ${PASSWORD_MIN} characters. A few unrelated words work well.`;
+  if (password.length < PASSWORD_MIN) return `Use at least ${PASSWORD_MIN} characters. A few random words will do.`;
   if (password.length > 128) return 'Use 128 characters or fewer.';
   try {
     const status = await validatePassword(auth, password);
@@ -475,7 +475,7 @@ export function listAnswers(event) {
   return attempt(async () => {
     const snapshot = await getDocs(query(collection(db, 'events', event.id, 'responses'), limit(MOST_ANSWERS)));
     return snapshot.docs.map((d) => readAnswer(d, event.slotCount)).sort(oldestFirst);
-  }, { denied: 'Only the organizer can see the answers.' });
+  }, { denied: 'Only the person who made this event can see the answers.' });
 }
 
 /**
@@ -488,7 +488,7 @@ export function listAnswersSince(event, since) {
       where('updatedAt', '>', Timestamp.fromMillis(since)), limit(MOST_ANSWERS));
     const snapshot = await getDocs(changed);
     return snapshot.docs.map((d) => readAnswer(d, event.slotCount));
-  }, { denied: 'Only the organizer can see the answers.' });
+  }, { denied: 'Only the person who made this event can see the answers.' });
 }
 
 export const ANSWER_LIMIT = MOST_ANSWERS;
@@ -555,7 +555,7 @@ export function saveMyAnswer(event, { name, slots }, as) {
       await write();
     }
     return identity;
-  }, { denied: 'Your times couldn’t be saved. The organizer may have just closed this event.' });
+  }, { denied: 'Your times couldn’t be saved. The event may have just been closed.' });
 }
 
 /** How long a page should wait after one save before sending the next. */

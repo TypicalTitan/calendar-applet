@@ -41,7 +41,7 @@ await shot(page, '03-events-empty');
 
 await page.goto(`${base}#/new`);
 await page.getByLabel('Event name').fill('Board game weekend');
-await page.getByLabel('Note for invitees').fill('Bring snacks. We will pick whichever slot most people can make.');
+await page.getByLabel('Note').fill('Bring snacks. We will pick whichever slot most people can make.');
 await page.getByRole('button', { name: 'Next month' }).click();
 const cells = page.locator('.cal-day:not([aria-disabled])');
 for (const n of [9, 10, 11]) await cells.nth(n).click();

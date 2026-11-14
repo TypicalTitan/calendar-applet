@@ -41,18 +41,9 @@ export function replace(parent, ...children) {
 }
 
 const ICONS = {
-  copy: 'M9 9h10v10H9z M5 15V5h10',
-  check: 'M5 12.5l4.5 4.5L19 7.5',
-  share: 'M12 15V4 M8 8l4-4 4 4 M5 13v6h14v-6',
-  download: 'M12 4v11 M8 11l4 4 4-4 M5 19h14',
-  refresh: 'M19 12a7 7 0 1 1-2.05-4.95 M19 5v4h-4',
   trash: 'M5 7h14 M10 7V4h4v3 M7 7l1 13h8l1-13',
-  lock: 'M7 11V8a5 5 0 0 1 10 0v3 M6 11h12v9H6z',
-  unlock: 'M7 11V8a5 5 0 0 1 9.6-2 M6 11h12v9H6z',
   left: 'M14.5 6l-6 6 6 6',
   right: 'M9.5 6l6 6-6 6',
-  plus: 'M12 5v14 M5 12h14',
-  table: 'M4 6h16v12H4z M4 10h16 M4 14h16 M10 6v12',
   x: 'M6 6l12 12 M18 6L6 18',
 };
 
@@ -177,6 +168,17 @@ export function downloadFile(name, text, type = 'text/csv;charset=utf-8') {
 }
 
 let ids = 0;
+/**
+ * True where a finger is the main way of pointing (a phone or tablet), so instructions can say
+ * "tap". A laptop that also has a touch screen still counts as a mouse.
+ */
+export function touchFirst() {
+  const matches = (query) => (typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : false);
+  if (matches('(pointer: coarse)')) return true;
+  if (matches('(pointer: fine)')) return false;
+  return navigator.maxTouchPoints > 0;
+}
+
 export function uid(prefix = 'id') {
   ids += 1;
   return `${prefix}-${ids}`;

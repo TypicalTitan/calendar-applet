@@ -39,7 +39,7 @@ export function createDatePicker({ value = [], min, max, limit, label, onChange 
 
   function describe(note) {
     const dates = sorted();
-    const count = dates.length ? `${plural(dates.length, 'day', 'days')}: ${daysSummary(dates)}` : 'Pick the days people could meet.';
+    const count = dates.length ? `${plural(dates.length, 'day', 'days')}: ${daysSummary(dates)}` : 'No days picked yet.';
     summary.textContent = note ? `${count} ${note}` : count;
   }
 

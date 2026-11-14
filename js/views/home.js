@@ -1,4 +1,4 @@
-// The home page: what the site does, shown by letting the visitor do it.
+// The home page: one line saying what the site is, and a working example to try.
 
 import { h, replace } from '../ui/dom.js';
 import { createPaintGrid, createHeatGrid, heatLegend } from '../ui/grid.js';
@@ -81,23 +81,16 @@ export function homeView() {
   return {
     title: '',
     dispose: example.dispose,
-    el: h('div', null,
-      h('section', { class: 'hero' },
-        h('h1', null, 'Find a time everyone’s free.'),
-        h('div', null,
-          h('p', { class: 'lede' }, 'Pick the days. Send one link. Your friends mark when they can make it, with no account and no password, and you see where it all overlaps.'),
-          h('p', { class: 'cta row' },
-            account
-              ? h('a', { class: 'btn', href: '#/events' }, 'Go to your events')
-              : [h('a', { class: 'btn', href: '#/sign-up' }, 'Create an event'), h('a', { class: 'btn btn-quiet', href: '#/sign-in' }, 'Sign in')])),
-        h('div', null,
-          example.el,
-          h('p', { class: 'muted small aside' }, 'A working example with three made-up friends. Nothing here is saved.'))),
-      h('section', { 'aria-labelledby': 'how' },
-        h('h2', { id: 'how', class: 'vh' }, 'How it works'),
-        h('ol', { class: 'steps' },
-          h('li', null, h('h3', null, 'Set up the event'), h('p', null, 'Choose the days and the hours you’re considering, like November 21 to 23, 9 to 5.')),
-          h('li', null, h('h3', null, 'Send the link'), h('p', null, 'Each person opens it, types their name, and drags across the times they’re free.')),
-          h('li', null, h('h3', null, 'See the overlap'), h('p', null, 'A shaded grid shows who can make what. Download it all as a spreadsheet if you like.'))))),
+    el: h('section', { class: 'hero' },
+      h('div', null,
+        h('h1', null, 'Schedule things with your friends.'),
+        h('p', { class: 'lede' }, 'Pick some days and hours, like November 21st to 23rd, 9am to 5pm. Send the link. Your friends put in a name and mark when they’re free. You see where it overlaps.'),
+        h('p', { class: 'cta' }, account
+          ? h('a', { class: 'btn', href: '#/events' }, 'Your events')
+          : h('a', { class: 'btn', href: '#/sign-up' }, 'Create an event')),
+        account ? null : h('p', { class: 'muted small aside' }, 'You need an account. Your friends don’t.')),
+      h('div', null,
+        example.el,
+        h('p', { class: 'muted small aside' }, 'Try it. The three friends are made up and nothing is saved.'))),
   };
 }

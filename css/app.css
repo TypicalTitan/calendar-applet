@@ -56,7 +56,7 @@
   --button-text: #ffffff;
 
   --radius: 4px;
-  --radius-sheet: 10px;
+  --radius-sheet: 4px;
   --shadow-pop: 0 10px 30px rgb(20 27 45 / 0.16), 0 1px 3px rgb(20 27 45 / 0.12);
 
   --font: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -156,7 +156,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .shell { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
 
 .masthead {
-  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 1rem;
   width: 100%; max-width: 70rem; margin: 0 auto; padding: 0.9rem 1rem;
 }
 
@@ -170,7 +170,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .wordmark .mark-b { fill: var(--marker); }
 .wordmark .mark-c { fill: var(--heat-hi); }
 
-.nav { display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; justify-content: flex-end; }
+/* Never wraps inside itself: on a narrow screen the whole menu drops under the name as one row.
+   The negative margin lines the first and last words up with the edges of the page. */
+.nav { display: flex; align-items: center; gap: 0.25rem; margin-inline: -0.7rem; }
 .nav a, .nav button {
   display: inline-flex; align-items: center; min-height: 40px; padding: 0 0.7rem;
   border: 0; background: none; border-radius: var(--radius);
@@ -199,14 +201,21 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .note-text { white-space: pre-line; overflow-wrap: anywhere; }
 .page-head h1 { overflow-wrap: anywhere; }
 
+/* Paper is for the timetable (and for dialogs). Everything else sits straight on the page,
+   and a rule above a part is all that separates it from the one before. */
 .sheet {
   background: var(--paper);
   border: 1px solid var(--rule);
   border-radius: var(--radius-sheet);
   padding: 1.25rem;
 }
-.sheet-flush { padding: 0; overflow: hidden; }
-.sheet > h2 { margin-bottom: 0.75rem; }
+.part { border-top: 1px solid var(--rule-strong); padding-top: 1.25rem; }
+.part > h2 { margin-bottom: 0.75rem; }
+
+/* A line of small actions, written as links. */
+.links { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1.25rem; }
+.links .linklike { display: inline-flex; align-items: center; min-height: 32px; }
+.grid-tools { margin-left: auto; }
 
 /* ---------------------------------------------------------------- buttons */
 
@@ -229,7 +238,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn-danger { background: transparent; color: var(--danger); border-color: color-mix(in oklab, var(--danger), var(--paper) 45%); }
 .btn-danger:hover { background: var(--danger-wash); border-color: var(--danger); }
 
-.btn-small { min-height: 36px; padding: 0 0.75rem; font-size: 0.9375rem; }
+.btn-small { min-height: 36px; padding: 0 0.75rem; font-size: 0.875rem; }
 .btn-block { width: 100%; }
 
 .linklike {
@@ -237,6 +246,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.18em;
 }
 .linklike:hover { text-decoration-thickness: 2px; }
+.linklike.danger { color: var(--danger); }
 
 .icon-btn {
   display: inline-grid; place-items: center; width: 40px; height: 40px;
@@ -252,7 +262,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   display: block; font-weight: 650; margin-bottom: 0.35rem;
 }
 .field .hint { display: block; color: var(--ink-2); font-size: 0.875rem; margin-top: 0.35rem; }
-.field .error, .form-error { display: block; color: var(--danger); font-size: 0.9375rem; font-weight: 550; margin-top: 0.35rem; }
+.field .error, .form-error { display: block; color: var(--danger); font-size: 1rem; font-weight: 550; margin-top: 0.35rem; }
 .optional { color: var(--ink-3); font-weight: 420; }
 
 .input, .select, .textarea {
@@ -268,9 +278,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 legend { padding: 0; }
-fieldset.sheet { padding: 1.25rem; border: 1px solid var(--rule); }
-fieldset.sheet > legend { float: left; width: 100%; font-size: 1.125rem; font-stretch: var(--wide); font-weight: 720; margin-bottom: 0.5rem; }
-fieldset.sheet > legend + * { clear: both; margin-top: 0; }
+fieldset.part { border-top: 1px solid var(--rule-strong); padding-top: 1.25rem; }
+fieldset.part > legend { float: left; width: 100%; font-size: 1.25rem; font-stretch: var(--wide); font-weight: 720; letter-spacing: -0.01em; margin-bottom: 0.5rem; }
+fieldset.part > legend + * { clear: both; margin-top: 0; }
 
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 
@@ -294,7 +304,10 @@ fieldset.sheet > legend + * { clear: both; margin-top: 0; }
 .banner, dialog p, .people .who { overflow-wrap: anywhere; }
 
 .status-line { min-height: 1.5rem; color: var(--ink-2); overflow-wrap: anywhere; }
-.status-line.is-good { color: var(--marker-ink); font-weight: 600; }
+/* Stays in the page for screen readers, but takes no room until it has something to say. */
+.status-line:empty { min-height: 0; }
+.stack > .status-line:empty { margin-top: 0; }
+.status-line.is-good { color: var(--ink); font-weight: 600; }
 
 /* ---------------------------------------------------------------- the timetable */
 
@@ -413,13 +426,13 @@ fieldset.sheet > legend + * { clear: both; margin-top: 0; }
 
 .tt-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; margin-top: 0.75rem; }
 
-.legend-scale { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.legend-scale { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.8125rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .legend-scale ol { display: flex; gap: 2px; }
 .legend-scale li { display: grid; gap: 2px; justify-items: center; }
 .legend-scale .sw { width: 26px; height: 14px; border-radius: 2px; border: 1px solid var(--rule); background: var(--paper); }
 .legend-scale .sw[data-n]:not([data-n="0"]) { border-color: transparent; background: color-mix(in oklab, var(--heat-lo), var(--heat-hi) calc(var(--t) * 100%)); }
 
-.zone-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; color: var(--ink-2); font-size: 0.9375rem; }
+.zone-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; color: var(--ink-2); font-size: 0.875rem; }
 .zone-line select { min-height: 36px; padding: 0.2rem 0.4rem; width: auto; max-width: 100%; }
 
 
@@ -445,25 +458,17 @@ fieldset.sheet > legend + * { clear: both; margin-top: 0; }
 .cal-empty { height: 42px; }
 .cal-summary { margin-top: 0.5rem; min-height: 1.5rem; }
 
-/* ---------------------------------------------------------------- lists, figures, tables */
+/* ---------------------------------------------------------------- lists and tables */
 
-.event-list { border: 1px solid var(--rule); border-radius: var(--radius-sheet); background: var(--paper); overflow: hidden; }
-.event-list li + li { border-top: 1px solid var(--rule); }
-.event-list a { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem 1rem; align-items: center; padding: 0.9rem 1.1rem; text-decoration: none; }
+.event-list { border-bottom: 1px solid var(--rule-strong); }
+.event-list li { border-top: 1px solid var(--rule-strong); }
+.event-list li:first-child { border-top: 1.5px solid var(--ink); }
+.event-list a { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem 1rem; align-items: center; padding: 0.9rem 0.5rem; margin-inline: -0.5rem; border-radius: var(--radius); text-decoration: none; }
 .event-list a:hover { background: var(--wash); }
 .event-list a:focus-visible { outline-offset: -3px; }
 .event-list .name { font-weight: 700; font-stretch: var(--wide); overflow-wrap: anywhere; }
-.event-list .when { color: var(--ink-2); font-size: 0.9375rem; grid-column: 1; }
+.event-list .when { color: var(--ink-2); font-size: 0.875rem; grid-column: 1; }
 .event-list .state { grid-row: 1 / span 2; grid-column: 2; }
-
-.tag { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.1rem 0.5rem; border: 1px solid var(--rule-strong); border-radius: 999px; font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
-.tag svg { width: 13px; height: 13px; }
-
-.figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 0.75rem; }
-.figure { background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius-sheet); padding: 0.85rem 1rem; }
-.figure dt { color: var(--ink-2); font-size: 0.875rem; }
-.figure dd { font-size: 1.5rem; font-weight: 720; font-stretch: var(--wide); line-height: 1.2; }
-.figure dd small { display: block; font-size: 0.875rem; font-weight: 500; font-stretch: 100%; color: var(--ink-2); }
 
 .results { display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
 .results > * { min-width: 0; }
@@ -474,12 +479,16 @@ fieldset.sheet > legend + * { clear: both; margin-top: 0; }
   .results-grid { grid-area: grid; }
   .results-side { grid-area: side; position: sticky; top: 1rem; }
   .results-people { grid-area: people; }
+  /* Before anyone has answered there is nothing to go beside the grid except that fact. */
+  .results.is-empty .results-people { grid-area: side; border-top: 0; padding-top: 0; }
 }
 
 .people { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); column-gap: 1.5rem; }
 .people li { display: flex; align-items: center; gap: 0.25rem; border-top: 1px solid var(--rule); }
+/* The negative margin puts the names in line with the heading above; the padding is only there
+   to give the hover and pressed shading some room. */
 .people .who {
-  flex: 1; min-width: 0; display: grid; text-align: left; padding: 0.5rem 0.4rem; border: 0; background: none; cursor: pointer; border-radius: var(--radius);
+  flex: 1; min-width: 0; display: grid; text-align: left; padding: 0.5rem 0.4rem; margin-left: -0.4rem; border: 0; background: none; cursor: pointer; border-radius: var(--radius);
 }
 .people .who:hover { background: var(--wash); }
 .people .who[aria-pressed="true"] { background: var(--marker-soft); }
@@ -488,13 +497,11 @@ fieldset.sheet > legend + * { clear: both; margin-top: 0; }
 
 .best li { border-top: 1px solid var(--rule); }
 .best li:first-child { border-top: 0; }
-.best button { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; min-width: 0; text-align: left; gap: 0.1rem; padding: 0.55rem 0.4rem; border: 0; background: none; cursor: pointer; border-radius: var(--radius); }
+.best button { display: grid; grid-template-columns: minmax(0, 1fr); width: calc(100% + 0.8rem); min-width: 0; margin-inline: -0.4rem; text-align: left; gap: 0.1rem; padding: 0.55rem 0.4rem; border: 0; background: none; cursor: pointer; border-radius: var(--radius); }
 .best .t, .best .c { min-width: 0; overflow-wrap: anywhere; }
 .best button:hover, .best button[aria-pressed="true"] { background: var(--wash); }
 .best .t { font-weight: 650; }
 .best .c { font-size: 0.875rem; color: var(--ink-2); }
-.best .meter { height: 6px; border-radius: 3px; background: var(--marker-soft); overflow: hidden; margin-top: 0.25rem; }
-.best .meter i { display: block; height: 100%; width: calc(var(--t) * 100%); background: var(--marker); }
 
 .detail h3 { font-stretch: 100%; }
 .detail .names { color: var(--ink-2); overflow-wrap: anywhere; }
@@ -507,18 +514,15 @@ fieldset.sheet > legend + * { clear: both; margin-top: 0; }
 .data-table td.yes { background: var(--marker-soft); font-weight: 650; }
 .data-table td.num, .data-table th.num { text-align: right; }
 
+/* The invite page is as wide as its timetable needs and no wider. */
+.invite { max-width: max(34rem, calc(6.8rem + var(--days, 3) * 9rem)); margin-inline: auto; }
+
 .invite-row { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 .invite-row .input { flex: 1 1 16rem; width: auto; }
 
-.steps { counter-reset: step; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
-.steps li { counter-increment: step; padding-top: 0.75rem; border-top: 1.5px solid var(--ink); }
-.steps li::before { content: counter(step); display: block; font-stretch: 125%; font-weight: 850; font-size: 1.75rem; line-height: 1; margin-bottom: 0.4rem; }
-.steps h3 { margin-bottom: 0.25rem; }
-.steps p { color: var(--ink-2); }
-
 .setup-steps { counter-reset: step; }
 .setup-steps > li { counter-increment: step; position: relative; padding: 0 0 1.25rem 2.5rem; }
-.setup-steps > li::before { content: counter(step); position: absolute; left: 0; top: -0.1rem; width: 1.75rem; height: 1.75rem; display: grid; place-items: center; border-radius: 50%; background: var(--button); color: var(--button-text); font-weight: 720; font-size: 0.9375rem; }
+.setup-steps > li::before { content: counter(step); position: absolute; left: 0; top: -0.1rem; width: 1.75rem; height: 1.75rem; display: grid; place-items: center; border-radius: 50%; background: var(--button); color: var(--button-text); font-weight: 720; font-size: 0.875rem; }
 .setup-steps h3 { margin-bottom: 0.25rem; }
 .setup-steps p, .setup-steps li li { color: var(--ink-2); }
 .setup-steps ul { list-style: disc; padding-left: 1.2rem; margin-top: 0.25rem; }
@@ -528,26 +532,26 @@ pre { background: var(--wash); padding: 0.75rem; border-radius: var(--radius); o
 pre code { background: none; padding: 0; }
 .rules-text { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.8125rem; white-space: pre; }
 
-/* ---------------------------------------------------------------- landing */
+/* ---------------------------------------------------------------- home */
 
-.hero { display: grid; gap: 2rem 3rem; grid-template-columns: minmax(0, 1fr); align-items: start; padding: 1.25rem 0 3rem; }
+.hero { display: grid; gap: 2rem 3rem; grid-template-columns: minmax(0, 1fr); align-items: start; padding: 1.5rem 0 1rem; }
 @media (min-width: 58rem) {
-  .hero { grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); padding-top: 2.5rem; }
-  .hero h1 { grid-column: 1 / -1; }
+  .hero { grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); }
 }
 .hero h1 {
-  font-size: clamp(2.4rem, 0.9rem + 7.4vw, 6.25rem);
-  font-stretch: 125%; font-weight: 860; line-height: 0.94; letter-spacing: -0.04em;
-  max-width: 14ch;
+  font-size: clamp(2.4rem, 1.6rem + 2.2vw, 3.25rem);
+  font-stretch: 125%; font-weight: 860; line-height: 0.98; letter-spacing: -0.03em;
+  max-width: 12ch; margin-bottom: 1.1rem;
 }
-.hero .lede { font-size: 1.1875rem; color: var(--ink-2); max-width: 30rem; }
+.hero .lede { font-size: 1.125rem; color: var(--ink-2); max-width: 30rem; }
 .hero .cta { margin-top: 1.5rem; }
 .hero .aside { margin-top: 0.6rem; }
 .demo { --col-w: 48px; }
 .demo .tt-table { --row-h: 30px; }
 .demo .pairgrid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
-.demo h2 { font-size: 0.9375rem; font-stretch: 100%; font-weight: 650; margin-bottom: 0.4rem; }
+.demo h2 { font-size: 1rem; font-stretch: 100%; font-weight: 650; margin-bottom: 0.4rem; }
 .demo .legend-scale { margin-top: 0.9rem; }
+.results-grid .legend-scale { min-width: 0; }
 .demo .readout { margin-top: 1rem; padding-top: 0.85rem; border-top: 1px solid var(--rule); min-height: 3.2rem; }
 .demo .readout b { font-weight: 720; }
 .demo .friends { color: var(--ink-2); font-size: 0.875rem; margin-top: 0.3rem; }
@@ -562,6 +566,9 @@ dialog {
 dialog::backdrop { background: rgb(10 14 22 / 0.5); }
 dialog h2 { margin-bottom: 0.5rem; }
 dialog .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.6rem; margin-top: 1.25rem; }
+@media (max-width: 26rem) {
+  dialog .actions { flex-direction: column-reverse; align-items: stretch; }
+}
 
 .toasts { position: fixed; left: 50%; bottom: 1.25rem; transform: translateX(-50%); z-index: 40; display: grid; gap: 0.5rem; justify-items: center; width: max-content; max-width: calc(100vw - 2rem); pointer-events: none; }
 .toasts-errors, .toasts-passing { display: grid; gap: 0.5rem; justify-items: center; }
@@ -578,10 +585,6 @@ dialog .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-.empty { padding: 2.25rem 1.25rem; text-align: left; }
-.empty h2 { margin-bottom: 0.35rem; }
-.empty p { color: var(--ink-2); max-width: 46ch; margin-bottom: 1rem; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }

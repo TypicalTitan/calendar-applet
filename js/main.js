@@ -63,9 +63,12 @@ function drawNav() {
   if (account) {
     replace(nav, link('/events', 'Your events'), link('/account', 'Account'),
       h('button', { type: 'button', onclick: handleSignOut }, 'Sign out'));
+  } else if (/^\/e\/[^/]+$/.test(path)) {
+    replace(nav); // someone answering an invite needs no account, so the page does not offer one
   } else {
     replace(nav, link('/sign-in', 'Sign in'), link('/sign-up', 'Create account'));
   }
+  nav.hidden = !nav.firstChild;
 }
 
 async function handleSignOut() {
@@ -132,7 +135,7 @@ function frame() {
         nav),
       main,
       h('footer', { class: 'colophon' },
-        h('p', null, `${appName} finds a time everyone is free. Names and times you save are shared with the event’s organizer and nobody else.`))));
+        h('p', null, `${appName} is an applet for finding a time with friends.`))));
 }
 
 async function start() {
@@ -154,6 +157,7 @@ async function start() {
   frame();
   if (!isConfigured(config)) {
     replace(nav);
+    nav.hidden = true;
     const page = setupView({ appName });
     replace(main, page.el);
     document.title = `${page.title} · ${appName}`;

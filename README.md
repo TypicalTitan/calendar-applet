@@ -1,16 +1,16 @@
 # Overlap
 
-Find a time everyone is free. An organizer picks some days and a daily time window, sends one
-link, and each invitee types their name and marks when they can make it. No account or password
-for invitees. The organizer sees a shaded grid of who is free when, a ranked list of the best
-times, and can download everything as CSV.
+Schedule things with your friends. Pick some days and hours (November 21st to 23rd, 9am to
+5pm), send the link, and each friend puts in a name and marks when they're free. No account or
+password for them. You see a shaded grid of who is free when and a list of the best times, and
+can download it all as CSV.
 
 It is a static website for GitHub Pages. Accounts and data live in a free Firebase project that
 you own.
 
-| Home | Invite page | Organizer's view |
+| Home | Invite page | Your event |
 | --- | --- | --- |
-| ![Home page with a live example](docs/home.png) | ![An invitee marking free times on a phone](docs/invite.png) | ![The organizer's shaded grid and best times](docs/results.png) |
+| ![Home page with a working example](docs/home.png) | ![A friend marking free times on a phone](docs/invite.png) | ![The shaded grid and best times](docs/results.png) |
 
 ## Put it online
 
@@ -101,7 +101,7 @@ live site:
 2. Create an event and open its invite link in a private window. Save an answer without signing
    in; it appears on your results page after **Refresh**.
 3. In the private window, change the answer and save again.
-4. Back on the results page: download both CSV files, **Close responses**, and check the private
+4. Back on the results page: download both CSV files, **Close event**, and check the private
    window can no longer save.
 5. Delete the event. Its invite link now says the event cannot be found.
 

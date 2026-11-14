@@ -6,8 +6,9 @@ import { localTimeZone } from '../core/tz.js';
 import { sameClock } from '../core/slots.js';
 
 /**
- * A line saying which zone the times are in. When the reader's own zone shows different clock
- * times from the event's, the line becomes a choice between the two, starting on their own.
+ * Which zone a grid's times are in. When the reader's own clock shows the same times as the
+ * event's there is nothing to say (the page heading already names the zone), so `el` is null.
+ * When it shows different times, `el` is a choice between the two, starting on the reader's own.
  * Returns { el, zone } and calls onChange(zone) when the choice changes.
  */
 export function zoneChooser({ event, slots, onChange }) {
@@ -21,10 +22,7 @@ export function zoneChooser({ event, slots, onChange }) {
     };
   }
   if (sameClock(slots, local, event.timezone)) {
-    return {
-      zone: event.timezone,
-      el: h('p', { class: 'zone-line' }, `Times are in ${zoneName(event.timezone, at)}.`),
-    };
+    return { zone: event.timezone, el: null };
   }
   const select = h('select', { class: 'select', 'aria-label': 'Time zone to show times in' },
     h('option', { value: local }, `Your time zone: ${zoneName(local, at)}`),

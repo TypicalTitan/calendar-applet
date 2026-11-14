@@ -1,4 +1,4 @@
-import { h, icon, toast, copyText } from '../ui/dom.js';
+import { h, toast, copyText } from '../ui/dom.js';
 
 /**
  * A plain page with a heading, a sentence or two, and optionally a way forward. `action` is the
@@ -33,7 +33,7 @@ export function notFoundView() {
 function rulesBox() {
   const text = h('textarea', { class: 'textarea rules-text', readonly: true, rows: 8, 'aria-label': 'The security rules to paste' });
   text.value = 'Loading the rules…';
-  const copy = h('button', { type: 'button', class: 'btn btn-quiet btn-small', disabled: true }, icon('copy'), 'Copy the rules');
+  const copy = h('button', { type: 'button', class: 'btn btn-quiet btn-small', disabled: true }, 'Copy the rules');
   copy.addEventListener('click', async () => {
     if (await copyText(text.value)) toast('Rules copied');
     else { text.focus(); text.select(); toast('Press Ctrl+C or ⌘C to copy'); }
@@ -63,8 +63,8 @@ export function setupView({ appName }) {
         step('Turn on sign-in',
           h('p', null, 'In the console menu open Authentication (under Security), then Sign-in method. Enable:'),
           h('ul', null,
-            h('li', null, h('b', null, 'Email/Password'), ', for organizers.'),
-            h('li', null, h('b', null, 'Anonymous'), ', so invitees can save their times without an account.')),
+            h('li', null, h('b', null, 'Email/Password'), ', for people who make events.'),
+            h('li', null, h('b', null, 'Anonymous'), ', so friends can save their times without an account.')),
           h('p', null, 'Then in Authentication, Settings:'),
           h('ul', null,
             h('li', null, 'Authorized domains: add ', h('code', null, origin || 'your-name.github.io'), '.'),
@@ -72,7 +72,7 @@ export function setupView({ appName }) {
         step('Create the database',
           h('p', null, 'Open Firestore (under Databases & Storage) and create a database. Keep the Standard edition and the database ID (default). Pick a location near you; it can’t be changed later. Choose production mode.')),
         step('Paste the security rules',
-          h('p', null, 'In Firestore, open Rules. Replace everything there with this, then Publish. These rules are what keep each organizer’s answers private.'),
+          h('p', null, 'In Firestore, open Rules. Replace everything there with this, then Publish. These rules are what keep everyone’s answers private.'),
           rulesBox()),
         step('Connect the site',
           h('p', null, 'Open Project settings (the gear icon). Under Your apps, add a Web app. It shows a snippet with several values. Copy these four into ',
