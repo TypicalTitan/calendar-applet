@@ -1,0 +1,10 @@
+node_modules/
+test-results/
+playwright-report/
+*.log
+.firebase/
+.DS_Store
+.claude/worktrees/
+review-firebase.json
+_site/
+docs/shots/

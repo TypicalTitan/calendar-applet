@@ -1,0 +1,102 @@
+name: Test and publish
+
+# On every pull request and every push to main: run the unit tests, the security-rule tests and
+# the browser tests (Chromium, Firefox and WebKit). Nothing here needs a Firebase project; the
+# emulators stand in for it.
+#
+# On main, once everything has passed, publish the site to GitHub Pages. That needs one setting,
+# made once by the repository's owner: Settings > Pages > Source: "GitHub Actions".
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # The Firestore emulator is a Java program and needs version 21 or newer.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Reuse the downloaded emulators
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ hashFiles('package-lock.json') }}
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Security-rule tests
+        run: npm run test:rules
+
+      - name: Install the test browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Browser tests
+        run: npm run test:e2e
+
+      # js/vendor/firebase.js is built from the pinned npm package. Rebuilding it here proves the
+      # committed file is exactly what the lock file describes, with nothing slipped in.
+      - name: Check the bundled Firebase SDK
+        run: npm run vendor && git diff --exit-code js/vendor/firebase.js
+
+      - name: Assemble the site as it will be published
+        run: node scripts/assemble-site.mjs _site "${GITHUB_SHA::8}"
+
+      - name: Try the assembled site in a browser
+        run: npm run test:published
+
+      - name: Keep the evidence when something fails
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: |
+            test-results/
+            firestore-debug.log
+          if-no-files-found: ignore
+
+      - name: Hand the site to the publishing job
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  publish:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v6
+      - id: deployment
+        uses: actions/deploy-pages@v5

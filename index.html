@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--
+    Content-Security-Policy: this page may only run its own scripts and styles, may only talk to
+    the Firebase sign-in and database services, never submits a form anywhere, and (Trusted
+    Types) refuses any attempt to turn a string into markup or script. If you add a feature that
+    needs another host, add it here.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none'">
+  <!-- Other sites learn only this site's address, never the page. (The part of an invite link after "#" is never sent anywhere.) -->
+  <meta name="referrer" content="strict-origin">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f3f5f1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#101418" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="Schedule things with your friends. Pick some days and hours, send a link, see when everyone is free.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Overlap">
+  <meta property="og:title" content="When are you free?">
+  <meta property="og:description" content="Open the link, put in your name, mark when you’re free. No account needed.">
+  <title>Overlap</title>
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="./assets/fonts/archivo-latin-wdth-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./css/app.css">
+  <link rel="modulepreload" href="./js/vendor/firebase.js">
+  <script type="module" src="./js/main.js"></script>
+  <script nomodule src="./js/legacy.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Replaced as soon as the site starts. If its files could not be loaded (just after an
+         update, say), this is what stays. -->
+    <p class="boot">Loading&hellip; If this doesn&rsquo;t change in a few seconds, reload the page.</p>
+    <noscript>
+      <p class="noscript">This site needs JavaScript. Turn it on and reload.</p>
+    </noscript>
+  </div>
+</body>
+</html>
