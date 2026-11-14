@@ -171,9 +171,9 @@ test('an unknown invite link says so plainly', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'We can’t find that event' })).toBeVisible();
 });
 
-test('a site with no Firebase settings shows setup steps instead of a broken page', async ({ browser }) => {
+test('a site with no Firebase settings shows setup steps instead of a broken page', async ({ browser, baseURL }) => {
   const context = await browser.newContext();
-  await context.addCookies([{ name: 'unconfigured', value: '1', url: 'http://127.0.0.1:4173/' }]);
+  await context.addCookies([{ name: 'unconfigured', value: '1', url: new URL('/', baseURL).href }]);
   const page = await context.newPage();
   await page.goto('./');
   await expect(page.getByRole('heading', { name: 'Finish setting up' })).toBeVisible();

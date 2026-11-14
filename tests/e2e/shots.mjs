@@ -3,7 +3,7 @@
 import { chromium, devices } from '@playwright/test';
 
 const out = process.argv[2] || 'test-results/shots';
-const base = 'http://127.0.0.1:4173/calendar-applet/';
+const base = `http://127.0.0.1:${process.env.PORT || 4173}/calendar-applet/`;
 const browser = await chromium.launch();
 const failed = [];
 
@@ -113,7 +113,7 @@ await mp.waitForSelector('.hero');
 await shot(mp, '16-home-phone');
 
 const unset = await context();
-await unset.addCookies([{ name: 'unconfigured', value: '1', url: 'http://127.0.0.1:4173/' }]);
+await unset.addCookies([{ name: 'unconfigured', value: '1', url: new URL('/', base).href }]);
 const up = await unset.newPage();
 await up.goto(base);
 await up.getByRole('heading', { name: 'Finish setting up' }).waitFor();

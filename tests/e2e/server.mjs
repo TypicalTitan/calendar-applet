@@ -18,10 +18,15 @@ const TYPES = {
   '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json',
 };
 
+// `firebase emulators:exec` tells its child processes where the emulators are listening.
+const [authHost, authPort] = (process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099').split(':');
+const [storeHost, storePort] = (process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080').split(':');
+const EMULATOR_ORIGINS = `http://${authHost}:${authPort} http://${storeHost}:${storePort}`;
+
 const TEST_CONFIG = `export const config = {
   appName: 'Overlap',
   firebase: { apiKey: 'demo-key', authDomain: 'demo-calendar-applet.firebaseapp.com', projectId: 'demo-calendar-applet', appId: 'demo-app' },
-  emulators: { auth: 'http://127.0.0.1:9099', firestore: ['127.0.0.1', 8080] },
+  emulators: { auth: 'http://${authHost}:${authPort}', firestore: ['${storeHost}', ${Number(storePort)}] },
 };
 `;
 const UNCONFIGURED = `export const config = { appName: 'Overlap', firebase: { apiKey: '', authDomain: '', projectId: '', appId: '' } };\n`;
@@ -48,7 +53,7 @@ createServer(async (req, res) => {
     if (path === '/js/config.js') {
       body = Buffer.from(req.headers.cookie?.includes('unconfigured=1') ? UNCONFIGURED : TEST_CONFIG);
     } else if (path === '/index.html') {
-      body = Buffer.from(body.toString('utf8').replace('connect-src', 'connect-src http://127.0.0.1:9099 http://127.0.0.1:8080'));
+      body = Buffer.from(body.toString('utf8').replace('connect-src', `connect-src ${EMULATOR_ORIGINS}`));
     }
     res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' }).end(body);
   } catch {

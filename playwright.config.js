@@ -1,6 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
 // Run with `npm run test:e2e`, which starts the Firebase emulators first.
+// PORT changes where the test server listens, for running two copies side by side.
+const port = Number(process.env.PORT || 4173);
+const base = `http://127.0.0.1:${port}/calendar-applet/`;
+
 export default defineConfig({
   testDir: 'tests/e2e',
   timeout: 60_000,
@@ -10,7 +14,7 @@ export default defineConfig({
   retries: 0,
   reporter: [['list']],
   use: {
-    baseURL: 'http://127.0.0.1:4173/calendar-applet/',
+    baseURL: base,
     locale: 'en-US',
     timezoneId: 'America/New_York',
     trace: 'off',
@@ -22,7 +26,8 @@ export default defineConfig({
   ],
   webServer: {
     command: 'node tests/e2e/server.mjs',
-    url: 'http://127.0.0.1:4173/calendar-applet/',
+    env: { PORT: String(port) },
+    url: base,
     reuseExistingServer: false,
   },
 });

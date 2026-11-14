@@ -1,0 +1,53 @@
+name: Tests
+
+# Runs the unit tests, the security-rule tests and the browser tests on every pull request and on
+# every push to main. Nothing here needs a Firebase project: the emulators stand in for it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # The Firestore emulator is a Java program.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Security-rule tests
+        run: npm run test:rules
+
+      - name: Install the test browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser tests
+        run: npm run test:e2e
+
+      # js/vendor/firebase.js is built from the pinned npm package. Rebuilding it here proves the
+      # committed file is exactly what the lock file describes, with nothing slipped in.
+      - name: Check the bundled Firebase SDK
+        run: npm run vendor && git diff --exit-code js/vendor/firebase.js
