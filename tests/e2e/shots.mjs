@@ -90,6 +90,7 @@ await page.getByRole('button', { name: 'Refresh' }).click();
 await page.getByText('5 answers').waitFor();
 await page.locator('.tt-heat .tt-cell[data-i="20"]').click();
 await page.mouse.move(5, 5);
+await page.locator('.toast').first().waitFor({ state: 'detached', timeout: 10_000 }).catch(() => {});
 await shot(page, '09-results');
 await page.getByRole('button', { name: 'Show as a table' }).click();
 await shot(page, '10-results-table');
