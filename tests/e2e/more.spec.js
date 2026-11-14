@@ -432,3 +432,28 @@ test('an answer given as a guest stays editable when an organizer signs in and o
   await expect(page.getByText('1 answer', { exact: true })).toBeVisible();
   await expect(page.getByRole('gridcell', { name: `${days[1].cell}, 1:00 PM, 1 of 1 free` })).toBeVisible();
 });
+
+test('if deleting an account is interrupted, the page says so and trying again finishes the job', async ({ page, context }) => {
+  const account = await signUp(page);
+  const uid = await userId(account);
+  await seedEvents(uid, 3);
+  await page.goto('#/account');
+
+  // Cut the connection to the database part-way: writes fail, everything else works.
+  await context.route(/documents:(commit|batchWrite)/, (route) => route.abort('internetdisconnected'));
+  await page.getByRole('button', { name: 'Delete my account' }).click();
+  await page.getByRole('dialog').getByLabel('Your password').fill(account.password);
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete account' }).click();
+  const problem = page.getByRole('alert').filter({ hasText: 'not deleted' });
+  await expect(problem).toBeVisible({ timeout: 20_000 });
+  await page.waitForTimeout(5000); // the message stays; it is not a passing notice
+  await expect(problem).toBeVisible();
+  expect(await countEventsOwnedBy(uid)).toBe(3);
+
+  await context.unroute(/documents:(commit|batchWrite)/);
+  await page.getByRole('button', { name: 'Delete my account' }).click();
+  await page.getByRole('dialog').getByLabel('Your password').fill(account.password);
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete account' }).click();
+  await expect(page.getByText('Account deleted')).toBeVisible({ timeout: 30_000 });
+  expect(await countEventsOwnedBy(uid)).toBe(0);
+});

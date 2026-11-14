@@ -80,6 +80,8 @@ export function accountView({ navigate }) {
 
   // ---- delete
   const remove = h('button', { type: 'button', class: 'btn btn-danger' }, 'Delete my account');
+  const removeError = h('p', { class: 'form-error', role: 'alert', hidden: true });
+  const removeStatus = h('p', { class: 'status-line', role: 'status' });
   remove.addEventListener('click', async () => {
     const confirmField = field({ label: 'Your password', control: h('input', { class: 'input', type: 'password', autocomplete: 'current-password', required: true }) });
     const ok = await confirmDialog({
@@ -92,13 +94,20 @@ export function accountView({ navigate }) {
     });
     if (!ok) return;
     remove.disabled = true;
+    removeError.hidden = true;
+    removeStatus.textContent = 'Deleting your events and account…';
     try {
       await deleteAccount(confirmField.input.value);
       toast('Account deleted');
       navigate('/');
     } catch (error) {
-      toast(error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/missing-password'
-        ? 'That password isn’t right. Nothing was deleted.' : error.message);
+      // Stays on the page until the next attempt: with many events this can take a while, and
+      // the person must not miss that it stopped.
+      removeError.textContent = error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/missing-password'
+        ? 'That password isn’t right. Nothing was deleted.'
+        : `Your account was not deleted. ${error.message} Events already removed stay removed; try again to finish.`;
+      removeError.hidden = false;
+      removeStatus.textContent = '';
       remove.disabled = false;
     }
   });
@@ -114,6 +123,7 @@ export function accountView({ navigate }) {
       h('section', { class: 'sheet stack' },
         h('h2', null, 'Delete account'),
         h('p', { class: 'muted' }, 'Removes your account and everything you created with it. This can’t be undone.'),
-        h('div', null, remove))),
+        h('div', null, remove),
+        removeError, removeStatus)),
   };
 }
