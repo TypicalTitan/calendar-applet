@@ -409,11 +409,6 @@ fieldset.sheet > legend + * { clear: both; margin-top: 0; }
 .zone-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; color: var(--ink-2); font-size: 0.9375rem; }
 .zone-line select { min-height: 36px; padding: 0.2rem 0.4rem; width: auto; max-width: 100%; }
 
-.hint-touch { display: none; }
-@media (hover: none) and (pointer: coarse) {
-  .hint-touch { display: inline; }
-  .hint-mouse { display: none; }
-}
 
 /* ---------------------------------------------------------------- date picker */
 
