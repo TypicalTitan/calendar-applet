@@ -132,10 +132,14 @@ test('a dialog’s buttons stack in the order the keyboard reaches them', async 
 });
 
 test('when copying fails on a phone, the page does not talk about keys a phone lacks', async ({ page }) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('refused')) }, configurable: true });
-  });
   await createEvent(page);
+  // Make the browser refuse the clipboard, as some in-app browsers do.
+  await page.evaluate(() => {
+    const refuse = () => Promise.reject(new Error('refused'));
+    if (window.Clipboard) window.Clipboard.prototype.writeText = refuse;
+    Object.defineProperty(Navigator.prototype, 'clipboard', { get: () => ({ writeText: refuse }), configurable: true });
+  });
   await page.getByRole('button', { name: 'Copy link' }).click();
   await expect(page.getByText('Couldn’t copy. Press and hold the link to copy it.')).toBeVisible();
+  await expect(page.getByText('Link copied')).toHaveCount(0);
 });
