@@ -95,8 +95,11 @@ export async function seedEvents(uid, count) {
   const days = nextMonthDays().map((d) => d.iso);
   const starts = days.map((iso) => Date.parse(`${iso}T14:00:00Z`) / 60000).join(',');
   const now = new Date().toISOString();
+  // A fresh run of ids every call: a deleted event's id is retired for good, so reusing ids
+  // across tests would make later tests trip over earlier ones.
+  const run = Array.from({ length: 12 }, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]).join('');
   for (let n = 0; n < count; n++) {
-    const id = `seed${String(n).padStart(4, '0')}${'x'.repeat(12)}`;
+    const id = `seed${String(n).padStart(4, '0')}${run}`;
     const reply = await fetch(`${documents()}/events?documentId=${id}`, {
       method: 'POST',
       headers: asOwner,

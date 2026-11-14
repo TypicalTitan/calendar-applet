@@ -37,6 +37,16 @@ test('a new organizer must confirm their email before they can create an event',
   await createEvent(page);
 });
 
+test('after confirming, a reload or a new tab is enough: the organizer can create an event at once', async ({ page }) => {
+  const account = await signUp(page, { confirm: false });
+  await openConfirmationLink(account.email);
+  // The confirmation link usually opens a new tab, so the page starts afresh with the sign-in
+  // it had before the address was confirmed.
+  await page.reload();
+  await expect(page.getByRole('link', { name: 'New event' }).first()).toBeVisible();
+  await createEvent(page);
+});
+
 test('coming back to the tab after opening the confirmation link is enough', async ({ page }) => {
   const account = await signUp(page, { confirm: false });
   await openConfirmationLink(account.email);

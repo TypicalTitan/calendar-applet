@@ -6,7 +6,8 @@
 //
 // Both are a WAI-ARIA grid: one cell is in the tab order, arrow keys move between cells.
 
-import { describeGrid, slotWall } from '../core/slots.js';
+import { describeGrid } from '../core/slots.js';
+import { utcToWall } from '../core/tz.js';
 import { daysBetween } from '../core/dates.js';
 import { heatScale } from '../core/availability.js';
 import { h } from './dom.js';
@@ -19,14 +20,15 @@ const SLOP_PX = 10;
 
 /** "Saturday, November 21, 9:00 AM": the exact local start of a slot. */
 export function slotName(event, slots, index, zone) {
-  const wall = slotWall(event, slots, index, zone);
-  return `${longDate(wall.date)}, ${timeLabel(wall.startMinute)}`;
+  const wall = utcToWall(slots.utc[index], zone);
+  return `${longDate(wall.date)}, ${timeLabel(wall.minute)}`;
 }
 
 function buildTable({ event, slots, zone, label, multiselect }) {
   const layout = describeGrid(event, slots, zone);
   const { perDay } = slots;
   const cells = new Array(slots.count);
+  const names = new Array(slots.count);
 
   const headRow = h('tr', null, h('td', { class: 'tt-corner' }));
   layout.columns.forEach((column, d) => {
@@ -52,20 +54,20 @@ function buildTable({ event, slots, zone, label, multiselect }) {
   layout.rows.forEach((row, k) => {
     const previous = layout.rows[k - 1];
     const nextDay = previous ? row.dayOffset > previous.dayOffset : false;
-    const labelled = k === 0 || row.minute % 60 === 0 || event.slotMinutes === 60;
     const tr = h('tr', { class: `tt-row${row.minute % 60 === 0 ? ' is-hour' : ''}${nextDay ? ' is-nextday' : ''}` },
       h('th', { scope: 'row', class: 'tt-time' },
-        labelled ? h('span', null, hourLabel(row.minute)) : h('span', { class: 'vh' }, timeLabel(row.minute)),
+        row.labelled ? h('span', null, hourLabel(row.minute)) : h('span', { class: 'vh' }, timeLabel(row.minute)),
         nextDay ? h('span', { class: 'next' }, 'next day') : null));
     layout.columns.forEach((column, d) => {
       const index = d * perDay + k;
       const shift = column.shifts.find((s) => s.k === k && k > 0);
+      names[index] = slotName(event, slots, index, zone);
       const cell = h('td', {
         class: 'tt-cell',
         role: 'gridcell',
         tabindex: '-1',
         dataset: { i: String(index) },
-        'aria-label': slotName(event, slots, index, zone),
+        'aria-label': names[index],
       }, shift ? h('span', { class: 'shift', 'aria-hidden': 'true' }, shiftBadge(shift.minutes)) : null);
       cells[index] = cell;
       tr.append(cell);
@@ -82,7 +84,7 @@ function buildTable({ event, slots, zone, label, multiselect }) {
     'aria-colcount': String(layout.columns.length + 1),
   }, h('thead', null, headRow), body);
   table.style.setProperty('--cols', String(layout.columns.length));
-  return { table, cells };
+  return { table, cells, names };
 }
 
 function indexOfCell(table, target) {
@@ -412,8 +414,7 @@ export function createHeatGrid({ event, slots, zone, label, onSelect = () => {} 
   }
 
   function mount(displayZone) {
-    ({ table, cells } = buildTable({ event, slots, zone: displayZone, label, multiselect: false }));
-    names = cells.map((_, i) => slotName(event, slots, i, displayZone));
+    ({ table, cells, names } = buildTable({ event, slots, zone: displayZone, label, multiselect: false }));
     focusIndex = Math.min(focusIndex, Math.max(0, count - 1));
     if (count > 0) cells[focusIndex].tabIndex = 0;
     table.addEventListener('click', (e) => {

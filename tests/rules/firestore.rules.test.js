@@ -356,18 +356,25 @@ test('a tombstone can never be read, changed or removed', async () => {
     await assertFails(getDoc(tombstone(db, 'gone')));
     await assertFails(getDocs(collection(db, 'tombstones')));
     await assertFails(updateDoc(tombstone(db, 'gone'), { at: serverTimestamp() }));
+    await assertFails(setDoc(tombstone(db, 'gone'), { at: serverTimestamp() }));
     await assertFails(deleteDoc(tombstone(db, 'gone')));
   }
 });
 
-test('a tombstone left without deleting the event does not stop the event working', async () => {
+test('a tombstone left without deleting the event does not stop the event working, or being deleted the usual way', async () => {
   // An organizer could write only the tombstone. It harms nobody: the event carries on, and
-  // can still be deleted later.
+  // the site's ordinary delete (tombstone and event in one batch) still goes through.
   await seedEvent();
   const db = account('olga');
   await assertSucceeds(setDoc(tombstone(db), stamp()));
   await assertSucceeds(setDoc(doc(guest('gus'), `events/${pad('ev1')}/responses/gus`), answer()));
-  await assertSucceeds(deleteDoc(doc(db, `events/${pad('ev1')}`)));
+  await assertFails(setDoc(tombstone(account('pete')), stamp()), 'somebody else rewriting it');
+  await assertFails(setDoc(tombstone(db), { at: Timestamp.fromDate(new Date('2020-01-01T00:00:00Z')) }), 'a made-up time');
+  const batch = writeBatch(db);
+  batch.set(tombstone(db), stamp());
+  batch.delete(doc(db, `events/${pad('ev1')}`));
+  await assertSucceeds(batch.commit());
+  await assertFails(setDoc(tombstone(db), stamp()), 'once the event is gone the tombstone is final');
 });
 
 // ---------------------------------------------------------------- answers: writing

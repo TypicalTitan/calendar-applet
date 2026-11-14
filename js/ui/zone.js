@@ -13,6 +13,13 @@ import { sameClock } from '../core/slots.js';
 export function zoneChooser({ event, slots, onChange }) {
   const local = localTimeZone();
   const at = slots.utc[0] ?? Date.now();
+  if (event.zoneKnown === false) {
+    // The event's zone is newer than this browser's list. Its stored instants still convert.
+    return {
+      zone: local,
+      el: h('p', { class: 'zone-line' }, `Times are shown in your time zone, ${zoneName(local, at)}.`),
+    };
+  }
   if (sameClock(slots, local, event.timezone)) {
     return {
       zone: event.timezone,

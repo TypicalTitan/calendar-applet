@@ -88,8 +88,8 @@ test('describeGrid in the event zone labels columns with the chosen dates and ro
   assert.deepEqual(g.columns.map((c) => c.lastDate), weekend.dates);
   assert.deepEqual(g.columns.map((c) => c.shifts), [[], [], []]);
   assert.equal(g.rows.length, 16);
-  assert.deepEqual(g.rows[0], { k: 0, minute: 540, dayOffset: 0 });
-  assert.deepEqual(g.rows[15], { k: 15, minute: 990, dayOffset: 0 });
+  assert.deepEqual(g.rows[0], { k: 0, minute: 540, dayOffset: 0, labelled: true });
+  assert.deepEqual(g.rows[15], { k: 15, minute: 990, dayOffset: 0, labelled: false });
 });
 
 test('describeGrid in another zone shows local times and flags rows that fall on the next day', () => {
@@ -97,10 +97,10 @@ test('describeGrid in another zone shows local times and flags rows that fall on
   const g = describeGrid(weekend, s, 'Asia/Tokyo');
   assert.deepEqual(g.columns.map((c) => c.date), ['2026-11-21', '2026-11-22', '2026-11-23']);
   assert.deepEqual(g.columns.map((c) => c.lastDate), ['2026-11-22', '2026-11-23', '2026-11-24']);
-  assert.deepEqual(g.rows[0], { k: 0, minute: 23 * 60, dayOffset: 0 });
-  assert.deepEqual(g.rows[1], { k: 1, minute: 23 * 60 + 30, dayOffset: 0 });
-  assert.deepEqual(g.rows[2], { k: 2, minute: 0, dayOffset: 1 });
-  assert.deepEqual(g.rows[15], { k: 15, minute: 6 * 60 + 30, dayOffset: 1 });
+  assert.deepEqual(g.rows[0], { k: 0, minute: 23 * 60, dayOffset: 0, labelled: true });
+  assert.deepEqual(g.rows[1], { k: 1, minute: 23 * 60 + 30, dayOffset: 0, labelled: false });
+  assert.deepEqual(g.rows[2], { k: 2, minute: 0, dayOffset: 1, labelled: true });
+  assert.deepEqual(g.rows[15], { k: 15, minute: 6 * 60 + 30, dayOffset: 1, labelled: false });
 });
 
 test('describeGrid marks the after-midnight rows of an overnight window', () => {
@@ -161,4 +161,22 @@ test('decodeDayStarts gives null for anything that is not eight-digit numbers jo
   for (const bad of ['', '1,2,3', '29921160,', ',29921160', '29921160 29922600', '29921160.5', '-29921160', 'soon', null, undefined, 29921160, ['29921160']]) {
     assert.equal(decodeDayStarts(bad), null, JSON.stringify(bad));
   }
+});
+
+test('describeGrid says which rows to label: one per hour counted from the first row', () => {
+  // Kathmandu is 15 minutes ahead of India, so every half-hour slot starts at :15 or :45 there.
+  const nepal = { timezone: 'Asia/Kathmandu', dates: ['2026-11-21'], startMinute: 540, endMinute: 720, slotMinutes: 30 };
+  const g = describeGrid(nepal, buildSlots(nepal), 'Asia/Kolkata');
+  assert.deepEqual(g.rows.map((r) => r.minute), [525, 555, 585, 615, 645, 675]);
+  assert.deepEqual(g.rows.map((r) => r.labelled), [true, false, true, false, true, false]);
+  const hourly = { ...nepal, slotMinutes: 60 };
+  assert.deepEqual(describeGrid(hourly, buildSlots(hourly), 'Asia/Kolkata').rows.map((r) => r.labelled), [true, true, true]);
+  const quarter = { ...weekend, dates: ['2026-11-21'], endMinute: 600, slotMinutes: 15 };
+  assert.deepEqual(describeGrid(quarter, buildSlots(quarter), 'America/New_York').rows.map((r) => r.labelled), [true, false, false, false]);
+});
+
+test('sameClock notices zones that differ only in the middle of a window', () => {
+  // Cuba and the US change clocks on the same night, two hours apart.
+  const night = { timezone: 'America/New_York', dates: ['2027-03-13'], startMinute: 1200, endMinute: 1680, slotMinutes: 60 };
+  assert.equal(sameClock(buildSlots(night), 'America/New_York', 'America/Havana'), false);
 });

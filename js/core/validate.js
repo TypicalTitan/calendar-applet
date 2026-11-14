@@ -3,7 +3,7 @@
 
 import { isValidTimeZone } from './tz.js';
 import { isDateString } from './dates.js';
-import { tidyLine, tidyText } from './text.js';
+import { tidyLine, tidyText, looksBlank } from './text.js';
 import { plausibleDayStarts } from './slots.js';
 
 export const LIMITS = Object.freeze({
@@ -30,7 +30,7 @@ export function validateEvent(input) {
   const errors = {};
 
   const title = tidyLine(input.title);
-  if (title === '') errors.title = 'Give the event a name.';
+  if (title === '' || looksBlank(title)) errors.title = 'Give the event a name.';
   else if (title.length > LIMITS.titleMax) errors.title = `Keep the name to ${LIMITS.titleMax} characters or fewer.`;
 
   const description = tidyText(input.description ?? '');
@@ -77,23 +77,31 @@ export function validateEvent(input) {
 
 /**
  * Checks an event read from the database before any page uses it. The rules stop most bad data,
- * but they cannot check everything (list contents, real dates, day order), and an event is
- * written by its organizer's browser, which an invitee has no reason to trust.
+ * but they cannot check everything (real dates, day order), and an event is written by its
+ * organizer's browser, which an invitee has no reason to trust.
  * Returns the event with its `id`, or null if it is not well formed.
+ *
+ * Two things are forgiven rather than treated as damage. A name or note that is not quite tidy
+ * is tidied. And a time zone this browser has never heard of (zones are added every year, and
+ * the organizer's browser may be newer) is kept, with `zoneKnown: false`: the stored start
+ * instants are enough to show the grid in the reader's own zone.
  */
 export function parseEvent(id, data) {
   if (!data || typeof data !== 'object') return null;
-  const checked = validateEvent(data);
+  const zoneKnown = isValidTimeZone(data.timezone);
+  if (!zoneKnown && !(typeof data.timezone === 'string' && /^[A-Za-z][A-Za-z0-9_+/-]{0,63}$/.test(data.timezone))) return null;
+  const checked = validateEvent(zoneKnown ? data : { ...data, timezone: 'UTC' });
   if (!checked.ok) return null;
   const v = checked.value;
-  // Stored events are already tidy, sorted and free of repeats; anything else was not written by this site.
-  if (v.title !== data.title || v.description !== data.description) return null;
+  // Stored days are already sorted and free of repeats; anything else was not written by this site.
   if (v.dates.length !== data.dates.length || v.dates.some((date, i) => date !== data.dates[i])) return null;
   if (data.slotCount !== v.slotCount) return null;
   if (typeof data.ownerUid !== 'string' || data.ownerUid === '') return null;
   if (typeof data.open !== 'boolean') return null;
   const event = {
     ...v,
+    timezone: data.timezone,
+    zoneKnown,
     id,
     ownerUid: data.ownerUid,
     open: data.open,

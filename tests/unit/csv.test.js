@@ -124,3 +124,17 @@ test('exportFileName never cuts a character in half', () => {
   assert.equal(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(name), false);
   assert.equal(name.endsWith('-grid.csv'), true);
 });
+
+test('columnNames never gives two people the same heading', () => {
+  assert.deepEqual(columnNames([{ name: 'Kim' }, { name: 'Kim' }, { name: 'Kim (2)' }], { escape: false }), ['Kim', 'Kim (2)', 'Kim (2) (2)']);
+  assert.deepEqual(columnNames([{ name: 'Kim (2)' }, { name: 'Kim' }, { name: 'Kim' }], { escape: false }), ['Kim (2)', 'Kim', 'Kim (3)']);
+});
+
+test('csvCell quotes a cell that contains a semicolon', () => {
+  assert.equal(csvCell('Smith; Jr.'), '"Smith; Jr."');
+});
+
+test('exportFileName keeps the vowel signs of scripts such as Hindi and Thai', () => {
+  assert.equal(exportFileName('\u092C\u0948\u0920\u0915 \u0915\u0940 \u092F\u094B\u091C\u0928\u093E', 'grid'), '\u092C\u0948\u0920\u0915-\u0915\u0940-\u092F\u094B\u091C\u0928\u093E-grid.csv');
+  assert.equal(exportFileName('\u0E1B\u0E23\u0E30\u0E0A\u0E38\u0E21\u0E17\u0E35\u0E21', 'grid'), '\u0E1B\u0E23\u0E30\u0E0A\u0E38\u0E21\u0E17\u0E35\u0E21-grid.csv');
+});

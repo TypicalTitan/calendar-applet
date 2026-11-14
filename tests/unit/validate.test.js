@@ -113,8 +113,31 @@ test('parseEvent rejects anything that is not a well-formed event', () => {
   assert.equal(parseEvent('ev1', { ...stored(), slotCount: 49 }), null);
   assert.equal(parseEvent('ev1', { ...stored(), dayStarts: [1, 2, 3] }), null);
   assert.equal(parseEvent('ev1', { ...stored(), dayStarts: undefined }), null);
-  assert.equal(parseEvent('ev1', { ...stored(), timezone: 'Mars/Olympus_Mons' }), null);
   assert.equal(parseEvent('ev1', { ...stored(), ownerUid: 7 }), null);
   assert.equal(parseEvent('ev1', { ...stored(), open: 'yes' }), null);
-  assert.equal(parseEvent('ev1', { ...stored(), title: '  padded  ' }), null, 'not already tidy');
+});
+
+test('validateEvent refuses a name with nothing visible in it', () => {
+  assert.ok(validateEvent({ ...good, title: '\u3164\u200D' }).errors.title);
+});
+
+test('an event name with an invisible character in it can be saved and read back', () => {
+  const made = validateEvent({ ...good, title: 'Team \u200B sync', description: 'Bring cafe\u200B\u0301 money' });
+  assert.equal(made.ok, true);
+  assert.equal(made.value.title, 'Team sync');
+  const back = parseEvent('ev1', { ...stored(), title: made.value.title, description: made.value.description });
+  assert.equal(back.title, 'Team sync');
+});
+
+test('parseEvent tidies an untidy stored name rather than declaring the event damaged', () => {
+  const e = parseEvent('ev1', { ...stored(), title: '  Team   sync ' });
+  assert.equal(e.title, 'Team sync');
+});
+
+test('parseEvent keeps an event whose time zone this browser has never heard of', () => {
+  const e = parseEvent('ev1', { ...stored(), timezone: 'America/Brand_New_City' });
+  assert.equal(e.zoneKnown, false);
+  assert.equal(parseEvent('ev1', stored()).zoneKnown, true);
+  assert.equal(parseEvent('ev1', { ...stored(), timezone: '<script>' }), null);
+  assert.equal(parseEvent('ev1', { ...stored(), timezone: 'x'.repeat(65) }), null);
 });

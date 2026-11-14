@@ -9,6 +9,7 @@ import { buildSlots, slotWall } from '../core/slots.js';
 import { countAvailable, fromAnswer, bestWindows } from '../core/availability.js';
 import { gridRows, rangeRows, toCsv, exportFileName, columnNames } from '../core/csv.js';
 import { validateEvent, LIMITS } from '../core/validate.js';
+import { localTimeZone } from '../core/tz.js';
 import {
   eventSummary, timeRange, longDate, shortDate, timeLabel, duration, plural, ago, listNames,
 } from '../ui/format.js';
@@ -178,13 +179,15 @@ export function resultsView({ params, navigate, appName }) {
       });
     });
 
+    // Files use the event's own time zone, or the reader's if this browser does not know that zone.
+    const exportZone = event.zoneKnown === false ? localTimeZone() : event.timezone;
     const exportGrid = h('button', { type: 'button', class: 'btn btn-quiet' }, icon('download'), 'Time-slot grid (.csv)');
     exportGrid.addEventListener('click', () => {
-      downloadFile(exportFileName(event.title, 'grid'), toCsv(gridRows(event, slots, answers, event.timezone)));
+      downloadFile(exportFileName(event.title, 'grid'), toCsv(gridRows(event, slots, answers, exportZone)));
     });
     const exportPeople = h('button', { type: 'button', class: 'btn btn-quiet' }, icon('download'), 'Free time by person (.csv)');
     exportPeople.addEventListener('click', () => {
-      downloadFile(exportFileName(event.title, 'people'), toCsv(rangeRows(event, slots, answers, event.timezone)));
+      downloadFile(exportFileName(event.title, 'people'), toCsv(rangeRows(event, slots, answers, exportZone)));
     });
 
     // ---- drawing

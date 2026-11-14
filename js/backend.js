@@ -63,14 +63,39 @@ function guestSession() {
 export function startBackend(config) {
   settings = config;
   ({ auth, db } = openSession(null));
+  let first = true;
   ready = new Promise((resolve) => {
-    onAuthStateChanged(auth, (user) => {
+    onAuthStateChanged(auth, async (user) => {
+      if (first) {
+        first = false;
+        await syncConfirmation(user);
+      }
       currentUser = toUser(user);
       resolve();
       if (!settingUpAccount) for (const listener of listeners) listener(currentUser);
     });
   });
   return ready;
+}
+
+/**
+ * Makes the sign-in this page starts with agree with the account as it is now.
+ *
+ * Whether an email is confirmed is written into the sign-in token when the token is issued, and
+ * a token lasts an hour. Someone who confirms their address in another tab and then opens or
+ * reloads the site would otherwise carry a token that still says "not confirmed", and the
+ * database would refuse to let them create events until it expired.
+ */
+async function syncConfirmation(user) {
+  if (!user || user.isAnonymous) return;
+  try {
+    if (!user.emailVerified) await reload(user);
+    if (!user.emailVerified) return;
+    const token = await user.getIdTokenResult();
+    if (token.claims.email_verified !== true) await user.getIdToken(true);
+  } catch {
+    // No connection: carry on with what is stored. Creating an event retries this.
+  }
 }
 
 function toUser(user) {
@@ -332,7 +357,7 @@ async function myEventSnapshots() {
 export function createEvent(value) {
   return attempt(async () => {
     const ref = doc(collection(db, 'events'));
-    await setDoc(ref, {
+    const save = () => setDoc(ref, {
       ownerUid: auth.currentUser.uid,
       title: value.title,
       description: value.description,
@@ -347,6 +372,16 @@ export function createEvent(value) {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+    try {
+      await save();
+    } catch (error) {
+      if (error?.code !== 'permission-denied') throw error;
+      // The likeliest cause is a sign-in token issued before the email was confirmed.
+      await reload(auth.currentUser);
+      await auth.currentUser.getIdToken(true);
+      refreshUser();
+      await save();
+    }
     return ref.id;
   }, { denied: 'The event couldn’t be saved. Check that your email is confirmed, then try again.' });
 }

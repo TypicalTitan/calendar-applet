@@ -88,9 +88,10 @@ function mostCommon(values) {
  * Labels for showing the grid in `displayZone`. The grid always has one column per event day
  * and one row per slot of the window; only the labels depend on the zone.
  *
- * rows[k]: { k, minute, dayOffset }
+ * rows[k]: { k, minute, dayOffset, labelled }
  *   minute      local minutes after midnight
  *   dayOffset   1 when the row falls on the day after the column's date
+ *   labelled    whether to print the time beside this row
  * columns[d]: { day, date, lastDate, shifts }
  *   date        the local date the row labels count from
  *   lastDate    the local date of the column's last slot
@@ -123,7 +124,14 @@ export function describeGrid(event, slots, displayZone) {
 
   const labels = [];
   for (let k = 0; k < perDay; k++) labels.push(mostCommon(offsets.map((column) => column[k])));
-  const rows = labels.map((label, k) => ({ k, minute: label % DAY_MINUTES, dayOffset: Math.floor(label / DAY_MINUTES) }));
+  // A row gets a visible label once an hour, counted from the first row. (Counting from the
+  // clock instead would leave a viewer whose zone is 15 or 45 minutes off with no labels at all.)
+  const rows = labels.map((label, k) => ({
+    k,
+    minute: label % DAY_MINUTES,
+    dayOffset: Math.floor(label / DAY_MINUTES),
+    labelled: (k * event.slotMinutes) % 60 === 0,
+  }));
 
   const columns = [];
   for (let d = 0; d < dayCount; d++) {
@@ -163,11 +171,9 @@ export function slotWall(event, slots, index, displayZone) {
 /** True when two zones show the same clock time throughout the event. */
 export function sameClock(slots, zoneA, zoneB) {
   if (zoneA === zoneB) return true;
-  const { perDay, count, utc } = slots;
-  for (let i = 0; i < count; i += perDay) {
-    for (const j of [i, i + perDay - 1]) {
-      if (offsetMinutesAt(utc[j], zoneA) !== offsetMinutesAt(utc[j], zoneB)) return false;
-    }
+  // Every slot is checked: two zones can agree at both ends of a night and differ in between.
+  for (const instant of slots.utc) {
+    if (offsetMinutesAt(instant, zoneA) !== offsetMinutesAt(instant, zoneB)) return false;
   }
   return true;
 }

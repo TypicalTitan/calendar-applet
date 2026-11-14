@@ -17,8 +17,8 @@ rules_version = '2';
 //   delete         that person, or the organizer
 //
 // tombstones/{eventId}                 marks the id of a deleted event as used up for ever
-//   create         the organizer of that event
-//   nothing else   never read, changed or removed
+//   write          the organizer of that event, while the event still exists
+//   nothing else   never read, never removed, never changed once the event is gone
 //
 // Everything else is refused.
 
@@ -172,7 +172,10 @@ service cloud.firestore {
     }
 
     match /tombstones/{eventId} {
-      allow create: if ownsEvent(eventId)
+      // "update" as well as "create", so that deleting an event works even if its tombstone
+      // was somehow written earlier. Either way it needs the event to exist and to be yours,
+      // so once the event is gone its tombstone can never be touched again.
+      allow create, update: if ownsEvent(eventId)
         && request.resource.data.keys().hasOnly(['at'])
         && request.resource.data.keys().hasAll(['at'])
         && request.resource.data.at == request.time;

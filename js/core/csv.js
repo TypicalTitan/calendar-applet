@@ -15,7 +15,7 @@ const utcStamp = (ms) => new Date(ms).toISOString().replace('.000Z', 'Z');
 /** One cell, quoted only when it has to be (RFC 4180). */
 export function csvCell(value) {
   const text = value === null || value === undefined ? '' : String(value);
-  return /[",\r\n]|^\s|\s$/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  return /[",;\r\n]|^\s|\s$/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 const FORMULA_START = '=+\\-@\\uFF1D\\uFF0B\\uFF0D\\uFF20';
@@ -44,11 +44,11 @@ export function toCsv(rows) {
  * Headings are made safe for spreadsheets unless `escape` is false (for showing on a page).
  */
 export function columnNames(responses, { escape = true } = {}) {
-  const seen = new Map();
+  const used = new Set();
   return responses.map((r) => {
-    const n = (seen.get(r.name) || 0) + 1;
-    seen.set(r.name, n);
-    const heading = n === 1 ? r.name : `${r.name} (${n})`;
+    let heading = r.name;
+    for (let n = 2; used.has(heading); n++) heading = `${r.name} (${n})`;
+    used.add(heading);
     return escape ? safeText(heading) : heading;
   });
 }
@@ -105,7 +105,7 @@ export function rangeRows(event, slots, responses, zone) {
 export function exportFileName(title, kind) {
   const slug = String(title || '')
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, '-') // letters, digits, and the marks that belong to letters
     .replace(/^-+|-+$/g, '');
   const short = truncate(slug, 60).replace(/-+$/g, '');
   return `${short || 'event'}-${kind}.csv`;

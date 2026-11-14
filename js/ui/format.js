@@ -98,13 +98,15 @@ export function duration(minutes) {
 
 /** "1 h later", "30 min earlier": how a column differs from the row labels. */
 export function shiftLabel(minutes) {
+  if (minutes === 0) return 'as labelled';
   const size = Math.abs(minutes);
   const amount = size % 60 === 0 ? `${size / 60} h` : `${size} min`;
   return `${amount} ${minutes > 0 ? 'later' : 'earlier'}`;
 }
 
-/** "+1h" */
+/** "+1h", or "±0" where a column comes back to the labelled times. */
 export function shiftBadge(minutes) {
+  if (minutes === 0) return '±0';
   const size = Math.abs(minutes);
   return `${minutes > 0 ? '+' : '−'}${size % 60 === 0 ? `${size / 60}h` : `${size}m`}`;
 }
@@ -135,7 +137,9 @@ export function zoneName(zone, utc = Date.now()) {
 
 /** "Thu, Dec 10 to Sat, Dec 12, 9:00 AM-5:00 PM, Eastern Time (UTC-05:00)" */
 export function eventSummary(event, utc) {
-  return `${daysSummary(event.dates)}, ${timeRange(event.startMinute, event.endMinute)}, ${zoneName(event.timezone, utc)}`;
+  // A zone this browser does not know can still be named, just not described.
+  const zone = event.zoneKnown === false ? `${event.timezone.replace(/_/g, ' ')} time` : zoneName(event.timezone, utc);
+  return `${daysSummary(event.dates)}, ${timeRange(event.startMinute, event.endMinute)}, ${zone}`;
 }
 
 /** "3 minutes ago" */
