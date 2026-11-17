@@ -13,7 +13,7 @@ async function newPerson(browser, name) {
 async function makeRunLink(page) {
   await page.getByRole('button', { name: 'Add someone to run it' }).click();
   const link = await page.getByLabel('Link to run this event').inputValue();
-  await page.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
   return link;
 }
 
