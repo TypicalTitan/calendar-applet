@@ -492,9 +492,10 @@ export function joinEvent(eventId, inviteId) {
     } catch (error) {
       if (error?.code !== 'permission-denied') throw error;
       // As when creating an event: the sign-in token may predate the email being confirmed.
+      // No refreshUser() here: it would redraw the join page and wipe the message shown if
+      // the second try fails too. That page is only offered to confirmed accounts anyway.
       await reload(me);
       await me.getIdToken(true);
-      refreshUser();
       await save();
     }
   }, { denied: USED_LINK });
