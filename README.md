@@ -68,7 +68,11 @@ older guides show Authentication and Firestore under a "Build" heading instead.
 6. **Firestore > Rules**: replace what is there with the contents of
    [`firestore.rules`](firestore.rules) and choose **Publish**. These rules are what keep each
    organizer's answers private; the site does not work safely without them. (The site's own
-   setup page shows the same rules with a Copy button.)
+   setup page shows the same rules with a Copy button.) Then **Firestore > Indexes > Automatic >
+   Add exemption**: collection ID `owners`, field path `uid`, tick both query scopes, and switch
+   on **Ascending** under collection group scope. Without it, "Your events" cannot find the
+   events you run with friends. ([`firestore.indexes.json`](firestore.indexes.json) holds the
+   same setting for the Firebase CLI.)
 7. **Project settings (gear icon) > General > Your apps**: add a **Web app**. The console shows
    a snippet with several values; you need four of them.
 
