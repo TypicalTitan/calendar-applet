@@ -26,6 +26,7 @@ export {
   connectFirestoreEmulator,
   doc,
   collection,
+  collectionGroup,
   getDoc,
   getDocs,
   setDoc,

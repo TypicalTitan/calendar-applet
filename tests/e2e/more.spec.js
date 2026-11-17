@@ -474,7 +474,7 @@ test('someone sent the organizer\'s own results link is shown the way to the inv
   const context = await browser.newContext(NY);
   const visitor = await context.newPage();
   await visitor.goto(`${link}/results`);
-  await expect(visitor.getByText('Only the person who made this event can see the answers')).toBeVisible();
+  await expect(visitor.getByText('Only whoever runs this event can see the answers')).toBeVisible();
   await visitor.getByRole('link', { name: 'Add my times' }).click();
   await expect(visitor.getByRole('heading', { name: title, level: 1 })).toBeVisible();
   await expect(visitor.getByLabel('Your name')).toBeVisible();

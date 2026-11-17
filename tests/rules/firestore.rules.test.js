@@ -524,6 +524,171 @@ test('answers left behind by a deleted event stay private', async () => {
   await assertSucceeds(deleteDoc(doc(guest('gus'), 'events/gone0000000000000000/responses/gus')));
 });
 
+// ---------------------------------------------------------------- running an event together
+
+// Whoever made an event can hand a friend a one-time link to run it with them. The link carries
+// the id of an invite stored under the event. Opening it while signed in writes the friend into
+// events/{id}/owners/{their uid} and uses the invite up, both in one batch.
+const E = pad('ev1');
+const inviteId = (n = 1) => pad(`inv${n}`);
+const invitePath = (n = 1, eventId = 'ev1') => `events/${pad(eventId)}/invites/${inviteId(n)}`;
+const ownerPath = (uid, eventId = 'ev1') => `events/${pad(eventId)}/owners/${uid}`;
+const seedInvite = (n = 1, eventId = 'ev1', changes = {}) => seed(invitePath(n, eventId), { createdAt: Timestamp.now(), ...changes });
+const seedOwner = (uid, eventId = 'ev1', n = 9) =>
+  seed(ownerPath(uid, eventId), { uid, name: uid, invite: inviteId(n), at: Timestamp.now() });
+const joining = (uid, changes = {}) => ({ uid, name: 'Henry', invite: inviteId(1), at: serverTimestamp(), ...changes });
+
+// What the site does when someone opens the link: join and use up the invite in one go.
+function join(db, uid, { n = 1, eventId = 'ev1', data = {}, useUp = true } = {}) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, ownerPath(uid, eventId)), joining(uid, { invite: inviteId(n), ...data }));
+  if (useUp) batch.delete(doc(db, invitePath(n, eventId)));
+  return batch.commit();
+}
+
+test('whoever made an event can make one-time links for friends to run it with them', async () => {
+  await seedEvent();
+  const db = account('olga');
+  await assertSucceeds(setDoc(doc(db, invitePath(1)), { createdAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(db, `events/${E}/invites/short`), { createdAt: serverTimestamp() }), 'id too short to be secret');
+  await assertFails(setDoc(doc(db, invitePath(2)), { createdAt: Timestamp.fromDate(new Date('2020-01-01T00:00:00Z')) }), 'a made-up time');
+  await assertFails(setDoc(doc(db, invitePath(3)), { createdAt: serverTimestamp(), extra: 1 }));
+  await assertFails(updateDoc(doc(db, invitePath(1)), { createdAt: serverTimestamp() }), 'invites never change');
+  await assertFails(setDoc(doc(db, `events/${pad('nope')}/invites/${inviteId(1)}`), { createdAt: serverTimestamp() }), 'no such event');
+});
+
+test('nobody else can make, read or remove those links', async () => {
+  await seedEvent();
+  await seedInvite(1);
+  for (const db of [account('pete'), guest('gus'), stranger()]) {
+    await assertFails(setDoc(doc(db, invitePath(2)), { createdAt: serverTimestamp() }));
+    await assertFails(getDoc(doc(db, invitePath(1))));
+    await assertFails(getDocs(query(collection(db, `events/${E}/invites`), limit(100))));
+    await assertFails(deleteDoc(doc(db, invitePath(1))));
+  }
+  await assertFails(getDocs(query(collectionGroup(account('olga'), 'invites'), limit(10))), 'invites across all events');
+});
+
+test('a friend with an account can join with an invite, which is used up as they join', async () => {
+  await seedEvent();
+  await seedInvite(1);
+  await assertSucceeds(join(account('henry'), 'henry'));
+  await assertFails(join(account('pete'), 'pete'), 'the same invite a second time');
+});
+
+test('joining needs a real invite, used up in the same batch, before it is a week old', async () => {
+  await seedEvent();
+  await seedInvite(1);
+  await seedInvite(2, 'ev1', { createdAt: Timestamp.fromMillis(Date.now() - 8 * 24 * 3600 * 1000) });
+  await assertFails(join(account('henry'), 'henry', { n: 5, useUp: false }), 'made-up invite');
+  await assertFails(join(account('henry'), 'henry', { useUp: false }), 'invite left in place');
+  await assertFails(join(account('henry'), 'henry', { n: 2 }), 'expired');
+  await assertFails(setDoc(doc(account('henry'), invitePath(1)), { createdAt: serverTimestamp() }), 'cannot remake an invite to reuse it');
+  await assertFails(deleteDoc(doc(account('henry'), invitePath(1))), 'cannot just throw an invite away');
+});
+
+test('only a confirmed account can join, only as itself, and in the exact form', async () => {
+  await seedEvent();
+  await seedInvite(1);
+  await assertFails(join(guest('gus'), 'gus'), 'a guest');
+  await assertFails(join(unconfirmed('una'), 'una'), 'email not confirmed');
+  await assertFails(join(stranger(), 'nobody'));
+  await assertFails(join(account('henry'), 'pete'), 'in someone else\'s name');
+  await assertFails(join(account('henry'), 'henry', { data: { uid: 'pete' } }));
+  await assertFails(join(account('henry'), 'henry', { data: { name: 'x'.repeat(61) } }));
+  await assertFails(join(account('henry'), 'henry', { data: { name: 7 } }));
+  await assertFails(join(account('henry'), 'henry', { data: { at: Timestamp.fromDate(new Date('2020-01-01T00:00:00Z')) } }));
+  await assertFails(join(account('henry'), 'henry', { data: { extra: true } }));
+  await assertFails(join(account('olga'), 'olga'), 'whoever made it already runs it');
+  await assertSucceeds(join(account('henry'), 'henry', { data: { name: '' } }));
+});
+
+test('someone who already runs an event cannot rewrite how they joined', async () => {
+  await seedEvent();
+  await seedOwner('henry');
+  await seedInvite(1);
+  await assertFails(join(account('henry'), 'henry'));
+  await assertFails(updateDoc(doc(account('henry'), ownerPath('henry')), { name: 'Hal' }));
+});
+
+test('a friend who runs an event can see and remove answers, rename, close, reopen and delete it', async () => {
+  await seedEvent();
+  await seedOwner('henry');
+  await seedAnswer('gus');
+  const db = account('henry');
+  await assertSucceeds(getDocs(query(collection(db, `events/${E}/responses`), limit(500))));
+  await assertSucceeds(getDoc(doc(db, `events/${E}/responses/gus`)));
+  const ref = doc(db, `events/${E}`);
+  await assertSucceeds(updateDoc(ref, { title: 'Renamed', description: '', updatedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref, { open: false, updatedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref, { open: true, updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(ref, { ownerUid: 'henry', updatedAt: serverTimestamp() }), 'cannot take over as maker');
+  await assertSucceeds(deleteDoc(doc(db, `events/${E}/responses/gus`)));
+  const batch = writeBatch(db);
+  batch.set(tombstone(db), stamp());
+  batch.delete(ref);
+  batch.delete(doc(db, ownerPath('henry')));
+  await assertSucceeds(batch.commit());
+});
+
+test('a friend who runs an event can make links too, and see and remove who runs it', async () => {
+  await seedEvent();
+  await seedOwner('henry');
+  await seedOwner('ivy');
+  const db = account('henry');
+  await assertSucceeds(setDoc(doc(db, invitePath(4)), { createdAt: serverTimestamp() }));
+  await assertSucceeds(getDocs(query(collection(db, `events/${E}/owners`), limit(50))));
+  await assertSucceeds(getDocs(query(collection(db, `events/${E}/invites`), limit(100))));
+  await assertSucceeds(deleteDoc(doc(db, invitePath(4))));
+  await assertSucceeds(deleteDoc(doc(account('olga'), ownerPath('ivy'))));
+  await assertSucceeds(deleteDoc(doc(db, ownerPath('henry'))), 'leaving');
+  await assertFails(getDocs(query(collection(db, `events/${E}/responses`), limit(500))), 'gone once they leave');
+});
+
+test('who runs an event stays private from everyone else', async () => {
+  await seedEvent();
+  await seedOwner('henry');
+  for (const db of [account('pete'), guest('gus'), stranger()]) {
+    await assertFails(getDoc(doc(db, ownerPath('henry'))));
+    await assertFails(getDocs(query(collection(db, `events/${E}/owners`), limit(50))));
+    await assertFails(deleteDoc(doc(db, ownerPath('henry'))));
+  }
+  await assertFails(getDocs(query(collection(account('olga'), `events/${E}/owners`), limit(500))), 'limit too large');
+  await assertSucceeds(getDoc(doc(account('henry'), ownerPath('henry'))));
+  await assertSucceeds(getDoc(doc(account('pete'), ownerPath('pete'))), 'anyone may check whether they run it');
+});
+
+test('someone can find the events they run with others, and nobody else\'s', async () => {
+  await seedEvent('ev1');
+  await seedEvent('ev2');
+  await seedOwner('henry', 'ev1');
+  await seedOwner('pete', 'ev2');
+  const mine = query(collectionGroup(account('henry'), 'owners'), where('uid', '==', 'henry'), limit(100));
+  await assertSucceeds(getDocs(mine));
+  await assertFails(getDocs(query(collectionGroup(account('henry'), 'owners'), where('uid', '==', 'pete'), limit(100))));
+  await assertFails(getDocs(query(collectionGroup(account('henry'), 'owners'), limit(100))));
+  await assertFails(getDocs(query(collectionGroup(account('henry'), 'owners'), where('uid', '==', 'henry'), limit(1000))));
+  await assertFails(getDocs(query(collectionGroup(stranger(), 'owners'), where('uid', '==', 'henry'), limit(100))));
+});
+
+test('events made before sharing existed keep working as they are', async () => {
+  // The event document itself is unchanged by sharing, so old events need no migration.
+  await seedEvent();
+  await seedAnswer('gus');
+  const db = account('olga');
+  await assertSucceeds(getDocs(query(collection(db, `events/${E}/responses`), limit(500))));
+  await assertSucceeds(updateDoc(doc(db, `events/${E}`), { open: false, updatedAt: serverTimestamp() }));
+  await assertFails(getDocs(query(collection(account('henry'), `events/${E}/responses`), limit(500))));
+});
+
+test('after an event is deleted, its old links and the list of who ran it are dead', async () => {
+  await seedOwner('henry', 'gone');
+  await seedInvite(1, 'gone');
+  await assertFails(join(account('pete'), 'pete', { eventId: 'gone' }));
+  await assertFails(getDocs(query(collection(account('henry'), 'events/gone0000000000000000/responses'), limit(500))));
+  await assertSucceeds(deleteDoc(doc(account('henry'), ownerPath('henry', 'gone'))), 'can still tidy up their own entry');
+});
+
 // ---------------------------------------------------------------- everything else
 
 test('no other part of the database can be read or written', async () => {

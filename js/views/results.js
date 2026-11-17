@@ -1,10 +1,13 @@
-// What the person who made an event sees: the invite link, a grid shaded by how many people are
+// What the people who run an event see: the invite link, a grid shaded by how many people are
 // free, the best times, who has answered, and the spreadsheet downloads.
 
-import { h, replace, icon, toast, confirmDialog, copyText, downloadFile, field, uid, touchFirst } from '../ui/dom.js';
+import { h, replace, icon, toast, confirmDialog, copyText, downloadFile, field, uid, touchFirst, setBusy, isBusy } from '../ui/dom.js';
 import { createHeatGrid, heatLegend } from '../ui/grid.js';
 import { zoneChooser } from '../ui/zone.js';
-import { getEvent, listAnswers, listAnswersSince, updateEvent, deleteEvent, deleteAnswer, getAccount, ANSWER_LIMIT } from '../backend.js';
+import {
+  getEvent, listAnswers, listAnswersSince, updateEvent, deleteEvent, deleteAnswer, getAccount, ANSWER_LIMIT,
+  runsEvent, listOwners, makeOwnerInvite, removeOwner, INVITE_LIFE_DAYS,
+} from '../backend.js';
 import { buildSlots, slotWall } from '../core/slots.js';
 import { countAvailable, fromAnswer, bestWindows } from '../core/availability.js';
 import { gridRows, rangeRows, toCsv, exportFileName, columnNames } from '../core/csv.js';
@@ -24,10 +27,10 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
   // invite page rather than at a sign-in form they have no use for.
   if (!getAccount()) {
     return messageView({
-      title: 'This page is for whoever made the event',
-      body: 'Only the person who made this event can see the answers. If you were invited, add your own times instead.',
+      title: 'This page is for whoever runs the event',
+      body: 'Only whoever runs this event can see the answers. If you were invited, add your own times instead.',
       action: { href: `#/e/${eventId}`, label: 'Add my times' },
-      secondary: { onclick: signInThenReturn, label: 'I made this event' },
+      secondary: { onclick: signInThenReturn, label: 'I run this event' },
     });
   }
 
@@ -45,22 +48,23 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
       }).el);
       return;
     }
-    if (event.ownerUid !== getAccount()?.uid) {
+    if (!(await runsEvent(event))) {
+      if (disposed) return;
       replace(holder, messageView({
         title: event.title,
-        body: 'Only the person who made this event can see the answers. If you were invited, add your own times instead.',
+        body: 'Only whoever runs this event can see the answers. If you were invited, add your own times instead.',
         action: { href: `#/e/${event.id}`, label: 'Add my times' },
       }).el);
       return;
     }
-    const answers = await listAnswers(event);
+    const [answers, owners] = await Promise.all([listAnswers(event), listOwners(event)]);
     if (disposed) return;
-    cleanup = build(event, answers);
+    cleanup = build(event, answers, owners);
   }).catch((error) => {
     if (!disposed) replace(holder, h('p', { class: 'banner banner-danger', role: 'alert' }, error.message));
   });
 
-  function build(event, firstAnswers) {
+  function build(event, firstAnswers, firstOwners) {
     const slots = buildSlots(event);
     const inviteUrl = `${window.location.href.split('#')[0]}#/e/${event.id}`;
     let answers = firstAnswers;
@@ -159,6 +163,75 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
         navigate('/events');
       } catch (error) { toast(error.message, { error: true }); }
     });
+
+    // ---- who runs it
+    // Whoever made the event can hand friends a one-time link to run it too. Anyone who runs it
+    // can do everything here, including making more links and taking people off.
+    const me = getAccount()?.uid;
+    const madeIt = event.ownerUid === me;
+    let owners = firstOwners;
+    const runners = h('p', { class: 'links no-print' });
+    const addOwner = h('button', { type: 'button', class: 'linklike' }, 'Add someone to run it');
+    addOwner.addEventListener('click', async () => {
+      if (isBusy(addOwner)) return;
+      setBusy(addOwner, true);
+      let inviteId;
+      try { inviteId = await makeOwnerInvite(event); } catch (error) { toast(error.message, { error: true }); }
+      setBusy(addOwner, false);
+      if (!inviteId) return;
+      const url = `${window.location.href.split('#')[0]}#/e/${event.id}/join/${inviteId}`;
+      const box = h('input', { class: 'input', type: 'text', readonly: true, value: url, 'aria-label': 'Link to run this event', onfocus: (e) => e.target.select() });
+      await confirmDialog({
+        title: 'Send this to one friend',
+        body: h('div', { class: 'stack stack-s' }, box,
+          h('p', { class: 'muted small' }, `It works once, for ${INVITE_LIFE_DAYS} days. They need an account. They’ll see every answer and can close or delete the event.`)),
+        confirmLabel: 'Copy link',
+        cancelLabel: 'Close',
+        onConfirm: async () => {
+          if (await copyText(url)) { toast('Link copied'); return true; }
+          box.focus();
+          box.select();
+          toast(touchFirst() ? 'Couldn’t copy. Press and hold the link to copy it.' : 'Press Ctrl+C or ⌘C to copy the link');
+          return false;
+        },
+      });
+    });
+
+    async function takeOff(person) {
+      const self = person.uid === me;
+      const ok = await confirmDialog({
+        title: self ? 'Stop running this event?' : `Take ${person.name || 'them'} off this event?`,
+        body: self
+          ? 'You won’t see the answers any more. Your own times, if you added any, stay.'
+          : 'They won’t see the answers any more. Their own times, if they added any, stay.',
+        confirmLabel: self ? 'Stop running it' : 'Take them off',
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await removeOwner(event, person.uid);
+        if (self) { toast('You no longer run this event'); navigate('/events'); return; }
+        owners = owners.filter((o) => o.uid !== person.uid);
+        drawRunners();
+        addOwner.focus();
+        toast('Taken off');
+      } catch (error) { toast(error.message, { error: true }); }
+    }
+
+    function drawRunners() {
+      const others = owners.filter((o) => o.uid !== me);
+      const named = (o) => o.name || 'Someone';
+      const parts = [];
+      if (!madeIt) parts.push('You run this with whoever made it', others.length ? ', and' : '.');
+      else if (others.length) parts.push('Also run by');
+      others.forEach((o, i) => {
+        const take = h('button', { type: 'button', class: 'linklike', 'aria-label': `Take off ${named(o)}` }, 'take off');
+        take.addEventListener('click', () => takeOff(o));
+        parts.push(h('span', null, ` ${named(o)} (`, take, `)${i === others.length - 1 ? '.' : ','}`));
+      });
+      const leave = madeIt ? null : h('button', { type: 'button', class: 'linklike', onclick: () => takeOff({ uid: me }) }, 'Stop running it');
+      replace(runners, parts.length ? h('span', { class: 'muted' }, ...parts) : null, addOwner, leave);
+    }
 
     // ---- name and note
     const headTitle = h('h1');
@@ -489,9 +562,11 @@ export function resultsView({ params, navigate, appName, signInThenReturn }) {
         linkHint),
       layout,
       h('p', { class: 'part links no-print' },
-        h('a', { class: 'linklike', href: `#/e/${event.id}` }, 'Add my own times'), editDetails, toggleOpen, remove)));
+        h('a', { class: 'linklike', href: `#/e/${event.id}` }, 'Add my own times'), editDetails, toggleOpen, remove),
+      runners));
 
     drawHead();
+    drawRunners();
     drawAll();
 
     return () => {

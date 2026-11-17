@@ -14,7 +14,7 @@ import {
   signOut as fbSignOut, sendEmailVerification, sendPasswordResetEmail, updateProfile, updatePassword,
   reauthenticateWithCredential, EmailAuthProvider, deleteUser, validatePassword, reload,
   getFirestore, connectFirestoreEmulator, doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
-  query, where, orderBy, startAfter, documentId, limit, serverTimestamp, writeBatch, Timestamp,
+  query, where, orderBy, startAfter, documentId, limit, serverTimestamp, writeBatch, Timestamp, collectionGroup,
 } from './vendor/firebase.js';
 import { parseEvent } from './core/validate.js';
 import { computeDayStarts, encodeDayStarts, decodeDayStarts } from './core/slots.js';
@@ -322,6 +322,8 @@ export function deleteAccount(password) {
     const user = await confirmPassword(password);
     // By id, not through the parsed list: an event this page cannot display still has to go.
     for (const snapshot of await myEventSnapshots()) await deleteEvent(snapshot.id);
+    // Events run with someone else stay theirs: just step out of them.
+    for (const ref of await sharedOwnerRefs()) await deleteDoc(ref);
     await deleteUser(user);
   });
 }
@@ -403,12 +405,102 @@ export function getEvent(id) {
   });
 }
 
+/** This account's entries in other people's events (events/{id}/owners/{uid}), at most 100. */
+async function sharedOwnerRefs() {
+  const me = auth.currentUser.uid;
+  const page = await getDocs(query(collectionGroup(db, 'owners'), where('uid', '==', me), limit(PAGE)));
+  return page.docs.filter((d) => d.id === me).map((d) => d.ref);
+}
+
+/** Events this account made, then those it runs with someone else (`shared: true`), newest first. */
 export function listMyEvents() {
   return attempt(async () => {
-    const snapshots = await myEventSnapshots();
-    return snapshots.map(readEvent).filter(Boolean).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const made = (await myEventSnapshots()).map(readEvent).filter(Boolean);
+    const seen = new Set(made.map((e) => e.id));
+    const shared = [];
+    for (const ref of await sharedOwnerRefs()) {
+      const id = ref.parent.parent.id;
+      if (seen.has(id)) continue;
+      const event = readEvent(await getDoc(doc(db, 'events', id))); // null once deleted
+      if (event) { seen.add(id); shared.push({ ...event, shared: true }); }
+    }
+    return [...made, ...shared].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   });
 }
+
+// ------------------------------------------------------------------ running an event together
+
+const INVITE_DAYS = 7;
+
+/** Whether the signed-in account runs this event: made it, or joined it by a link. */
+export function runsEvent(event) {
+  return attempt(async () => {
+    const me = getAccount();
+    if (!me) return false;
+    if (event.ownerUid === me.uid) return true;
+    return (await getDoc(doc(db, 'events', event.id, 'owners', me.uid))).exists();
+  });
+}
+
+/** Makes a one-time link for a friend to run the event too. Returns the invite's id. */
+export function makeOwnerInvite(event) {
+  return attempt(async () => {
+    const ref = doc(collection(db, 'events', event.id, 'invites'));
+    await setDoc(ref, { createdAt: serverTimestamp() });
+    return ref.id;
+  });
+}
+
+export const INVITE_LIFE_DAYS = INVITE_DAYS;
+
+/** The friends who run the event besides whoever made it: [{ uid, name }]. */
+export function listOwners(event) {
+  return attempt(async () => {
+    const snapshot = await getDocs(query(collection(db, 'events', event.id, 'owners'), limit(50)));
+    return snapshot.docs.map((d) => ({ uid: d.id, name: cleanName(d.data().name) || '' }));
+  });
+}
+
+/** Takes someone off the event, or takes yourself off it (leaving). */
+export function removeOwner(event, uid) {
+  return attempt(async () => {
+    await deleteDoc(doc(db, 'events', event.id, 'owners', uid));
+  });
+}
+
+/**
+ * Joins an event with a link someone sent: writes this account in as running it and uses the
+ * invite up, in one batch, so the link works once.
+ */
+export function joinEvent(eventId, inviteId) {
+  return attempt(async () => {
+    if (!ID.test(eventId) || !ID.test(inviteId)) throw new FriendlyError(USED_LINK, 'permission-denied');
+    const me = auth.currentUser;
+    const save = () => {
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'events', eventId, 'owners', me.uid), {
+        uid: me.uid,
+        name: (getAccount()?.name || '').slice(0, 60),
+        invite: inviteId,
+        at: serverTimestamp(),
+      });
+      batch.delete(doc(db, 'events', eventId, 'invites', inviteId));
+      return batch.commit();
+    };
+    try {
+      await save();
+    } catch (error) {
+      if (error?.code !== 'permission-denied') throw error;
+      // As when creating an event: the sign-in token may predate the email being confirmed.
+      await reload(me);
+      await me.getIdToken(true);
+      refreshUser();
+      await save();
+    }
+  }, { denied: USED_LINK });
+}
+
+const USED_LINK = 'This link has been used, or is more than a week old. Ask for a new one.';
 
 /** Changes the name, note or open/closed state. The days and times of an event never change. */
 export function updateEvent(id, changes) {
@@ -431,6 +523,7 @@ export function deleteEvent(id) {
     const ref = doc(db, 'events', id);
     const snapshot = await getDoc(ref);
     if (!snapshot.exists()) return;
+    const me = auth.currentUser.uid;
     if (snapshot.data().open === true) {
       try { await updateDoc(ref, { open: false, updatedAt: serverTimestamp() }); } catch { /* still delete it */ }
     }
@@ -445,9 +538,20 @@ export function deleteEvent(id) {
       }
       if (answers.docs.length < MOST_ANSWERS) break;
     }
+    // Unused links, and everyone else who runs it. Your own entry goes in the last batch: you
+    // need it until then to be allowed to delete the rest.
+    const invites = await getDocs(query(collection(db, 'events', id, 'invites'), limit(100)));
+    const owners = await getDocs(query(collection(db, 'events', id, 'owners'), limit(50)));
+    const others = [...invites.docs, ...owners.docs.filter((d) => d.id !== me)];
+    for (let i = 0; i < others.length; i += 20) {
+      const batch = writeBatch(db);
+      for (const item of others.slice(i, i + 20)) batch.delete(item.ref);
+      await batch.commit();
+    }
     const last = writeBatch(db);
     last.set(doc(db, 'tombstones', id), { at: serverTimestamp() });
     last.delete(ref);
+    if (owners.docs.some((d) => d.id === me)) last.delete(doc(db, 'events', id, 'owners', me));
     await last.commit();
   });
 }
@@ -468,14 +572,14 @@ function readAnswer(snapshot, slotCount) {
 const oldestFirst = (a, b) => (a.createdAt || 0) - (b.createdAt || 0);
 
 /**
- * The answers to an event, oldest first (at most MOST_ANSWERS of them). Only the organizer is
- * allowed to ask.
+ * The answers to an event, oldest first (at most MOST_ANSWERS of them). Only people who run the
+ * event are allowed to ask.
  */
 export function listAnswers(event) {
   return attempt(async () => {
     const snapshot = await getDocs(query(collection(db, 'events', event.id, 'responses'), limit(MOST_ANSWERS)));
     return snapshot.docs.map((d) => readAnswer(d, event.slotCount)).sort(oldestFirst);
-  }, { denied: 'Only the person who made this event can see the answers.' });
+  }, { denied: 'Only whoever runs this event can see the answers.' });
 }
 
 /**
@@ -488,7 +592,7 @@ export function listAnswersSince(event, since) {
       where('updatedAt', '>', Timestamp.fromMillis(since)), limit(MOST_ANSWERS));
     const snapshot = await getDocs(changed);
     return snapshot.docs.map((d) => readAnswer(d, event.slotCount));
-  }, { denied: 'Only the person who made this event can see the answers.' });
+  }, { denied: 'Only whoever runs this event can see the answers.' });
 }
 
 export const ANSWER_LIMIT = MOST_ANSWERS;
@@ -582,7 +686,7 @@ export function forgetGuest() {
   });
 }
 
-/** Removes one person's answer. Only the organizer is allowed to. */
+/** Removes one person's answer. Only someone who runs the event is allowed to. */
 export function deleteAnswer(event, answerId) {
   return attempt(async () => {
     await deleteDoc(doc(db, 'events', event.id, 'responses', answerId));

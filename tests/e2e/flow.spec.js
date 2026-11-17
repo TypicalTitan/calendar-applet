@@ -162,7 +162,7 @@ test('one organizer cannot open another organizer\'s results', async ({ page, br
   const otherPage = await other.newPage();
   await signUp(otherPage, { name: 'Pete' });
   await otherPage.goto(`${link}/results`);
-  await expect(otherPage.getByText('Only the person who made this event can see the answers')).toBeVisible();
+  await expect(otherPage.getByText('Only whoever runs this event can see the answers')).toBeVisible();
   await other.close();
 });
 
