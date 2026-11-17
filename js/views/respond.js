@@ -3,7 +3,7 @@
 import { h, replace, field, toast, confirmDialog, touchFirst, setBusy, isBusy } from '../ui/dom.js';
 import { createPaintGrid } from '../ui/grid.js';
 import { zoneChooser } from '../ui/zone.js';
-import { getEvent, getMyAnswer, saveMyAnswer, deleteMyAnswer, getAccount, forgetGuest, SAVE_PAUSE } from '../backend.js';
+import { getEvent, getMyAnswer, saveMyAnswer, deleteMyAnswer, getAccount, forgetGuest, runsEvent, SAVE_PAUSE } from '../backend.js';
 import { buildSlots, slotWall } from '../core/slots.js';
 import { cleanName, fromAnswer, toAnswer, isAnswer, emptyAnswer, NAME_MAX } from '../core/availability.js';
 import { duration, eventSummary, shortDate, timeLabel } from '../ui/format.js';
@@ -19,6 +19,7 @@ export function respondView({ params }) {
     replace(holder, h('p', { class: 'loading', role: 'status' }, 'Loading the event…'));
     let event;
     let mine;
+    let runs = false;
     try {
       event = await getEvent(eventId);
       if (disposed) return;
@@ -40,6 +41,7 @@ export function respondView({ params }) {
       // An answer already saved from this browser must be on the page before anything can be
       // saved: showing an empty form instead would let the next save wipe it out.
       mine = await getMyAnswer(event);
+      runs = await runsEvent(event).catch(() => false);
     } catch (error) {
       if (disposed) return;
       replace(holder, h('div', { class: 'stack' },
@@ -48,13 +50,14 @@ export function respondView({ params }) {
       return;
     }
     if (disposed) return;
-    cleanup = build(event, mine);
+    cleanup = build(event, mine, runs);
   }
 
-  function build(event, existing) {
+  function build(event, existing, runs) {
     const slots = buildSlots(event);
     const account = getAccount();
     const isOrganizer = account && account.uid === event.ownerUid;
+    const youRunIt = isOrganizer ? 'You made this event.' : 'You run this event.';
     let saved = existing;                         // what is stored, or null
     let savedAs = existing?.as;                   // whose answer it is: 'account' or 'guest'
     let bits = fromAnswer(existing?.slots, slots.count);
@@ -277,11 +280,11 @@ export function respondView({ params }) {
     // No wider than the timetable needs: a name box a metre long over a narrow grid looks lost.
     const width = { '--days': String(event.dates.length) };
 
-    const organizerNote = isOrganizer
+    const organizerNote = runs
       ? h('div', { class: 'banner banner-plain' },
         h('p', null, event.open
-          ? 'You made this event. This is what your friends see. You can add your own times here too.'
-          : 'You made this event. This is what your friends see.'),
+          ? `${youRunIt} This is what your friends see. You can add your own times here too.`
+          : `${youRunIt} This is what your friends see.`),
         h('a', { class: 'btn btn-quiet btn-small', href: `#/e/${event.id}/results` }, 'See the answers'))
       : null;
 
@@ -316,7 +319,7 @@ export function respondView({ params }) {
         formError,
         h('div', { class: 'row' }, save, remove),
         status,
-        h('p', { class: 'muted small' }, 'Only the person who made this event sees your name and times.'));
+        h('p', { class: 'muted small' }, 'Only whoever runs this event sees your name and times.'));
       replace(holder, h('div', { class: 'stack invite', style: width }, head, form));
     }
 

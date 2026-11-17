@@ -2,22 +2,36 @@ rules_version = '2';
 
 // Who may do what
 // ---------------
+// "Runs the event" means: made it (ownerUid), or joined through a one-time link (owners, below).
+//
 // events/{eventId}
 //   read one       anyone who knows the id (the id is the invite link's secret)
-//   list           only your own events
+//   list           only events you made (events you run with others are found through owners)
 //   create         an account holder with a confirmed email, as themselves, every field checked
-//   update         the organizer; only the name, note and open/closed flag can change
-//   delete         the organizer, and only together with a tombstone (below)
+//   update         anyone who runs it; only the name, note and open/closed flag can change
+//   delete         anyone who runs it, and only together with a tombstone (below)
 //
 // events/{eventId}/responses/{uid}     one answer per person; the document id is their user id
-//   read one       that person, or the organizer
-//   list           the organizer, at most 500 at a time
+//   read one       that person, or anyone who runs the event
+//   list           anyone who runs the event, at most 500 at a time
 //   create/update  that person, while the event is open, with every field checked, and not
 //                  more often than once every five seconds
-//   delete         that person, or the organizer
+//   delete         that person, or anyone who runs the event
+//
+// events/{eventId}/invites/{inviteId}  a one-time link for a friend to run the event too
+//   create         anyone who runs the event, with a full-length random id
+//   read, delete   anyone who runs the event; also the friend using it up as they join
+//   nothing else   never changed; good for seven days
+//
+// events/{eventId}/owners/{uid}        a friend who runs the event; the document id is their user id
+//   create         that person, with a confirmed email, using up an invite in the same batch
+//   read one       that person, or anyone who runs the event
+//   list           anyone who runs the event (at most 50); across events, only your own entries
+//   delete         that person (leaving), or anyone who runs the event
+//   nothing else   never changed
 //
 // tombstones/{eventId}                 marks the id of a deleted event as used up for ever
-//   write          the organizer of that event, while the event still exists
+//   write          anyone who runs that event, while the event still exists
 //   nothing else   never read, never removed, never changed once the event is gone
 //
 // Everything else is refused.
@@ -41,8 +55,22 @@ service cloud.firestore {
       return /databases/$(database)/documents/events/$(eventId);
     }
 
-    function ownsEvent(eventId) {
-      return signedIn() && get(eventPath(eventId)).data.ownerUid == request.auth.uid;
+    function ownerPath(eventId, uid) {
+      return /databases/$(database)/documents/events/$(eventId)/owners/$(uid);
+    }
+
+    function invitePath(eventId, inviteId) {
+      return /databases/$(database)/documents/events/$(eventId)/invites/$(inviteId);
+    }
+
+    // Made the event, or joined it through an invite. `exists` sees the database as it was
+    // before this request, so someone can leave in the same batch that deletes the event.
+    // The event itself must exist: an entry left behind by a deleted event opens nothing.
+    function runsEvent(eventId) {
+      return signedIn()
+        && exists(eventPath(eventId))
+        && (get(eventPath(eventId)).data.ownerUid == request.auth.uid
+            || exists(ownerPath(eventId, request.auth.uid)));
     }
 
     function eventFields() {
@@ -116,14 +144,14 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
 
       allow update: if signedIn()
-        && resource.data.ownerUid == request.auth.uid
+        && (resource.data.ownerUid == request.auth.uid || exists(ownerPath(eventId, request.auth.uid)))
         && validEvent(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['title', 'description', 'open', 'updatedAt'])
         && request.resource.data.updatedAt == request.time;
 
       allow delete: if signedIn()
-        && resource.data.ownerUid == request.auth.uid
+        && (resource.data.ownerUid == request.auth.uid || exists(ownerPath(eventId, request.auth.uid)))
         && existsAfter(tombstonePath(eventId));
 
       match /responses/{uid} {
@@ -136,7 +164,7 @@ service cloud.firestore {
         }
 
         // An answer is one "0" or "1" per slot of the event, and is only accepted while the
-        // organizer keeps the event open.
+        // event is open.
         function validAnswer(a) {
           let event = get(eventPath(eventId)).data;
           return event.open == true
@@ -155,8 +183,8 @@ service cloud.firestore {
           return request.time >= resource.data.updatedAt + duration.value(5, 's');
         }
 
-        allow get: if isSelf() || ownsEvent(eventId);
-        allow list: if ownsEvent(eventId) && request.query.limit <= 500;
+        allow get: if isSelf() || runsEvent(eventId);
+        allow list: if runsEvent(eventId) && request.query.limit <= 500;
 
         allow create: if isSelf()
           && validAnswer(request.resource.data)
@@ -167,15 +195,72 @@ service cloud.firestore {
           && validAnswer(request.resource.data)
           && request.resource.data.createdAt == resource.data.createdAt;
 
-        allow delete: if (isSelf() && notJustSaved()) || ownsEvent(eventId);
+        allow delete: if (isSelf() && notJustSaved()) || runsEvent(eventId);
       }
+
+      match /invites/{inviteId} {
+        // The id is the secret in the link, so it must be a full-length random one.
+        allow create: if runsEvent(eventId)
+          && inviteId.matches('^[A-Za-z0-9]{20}$')
+          && request.resource.data.keys().hasOnly(['createdAt'])
+          && request.resource.data.keys().hasAll(['createdAt'])
+          && request.resource.data.createdAt == request.time;
+
+        allow get: if runsEvent(eventId);
+        allow list: if runsEvent(eventId) && request.query.limit <= 100;
+
+        // Whoever runs the event may throw an invite away. The friend it was for uses it up by
+        // naming it in the owners entry they create in the same batch.
+        allow delete: if runsEvent(eventId)
+          || (signedIn()
+              && !exists(ownerPath(eventId, request.auth.uid))
+              && getAfter(ownerPath(eventId, request.auth.uid)).data.invite == inviteId);
+      }
+
+      match /owners/{uid} {
+        function isSelf() {
+          return signedIn() && request.auth.uid == uid;
+        }
+
+        // Joining: a confirmed account writes itself in, naming an invite of this event that is
+        // less than a week old, and deletes that invite in the same batch, so it works once.
+        function validJoin(o) {
+          let invite = invitePath(eventId, o.invite);
+          return o.keys().hasOnly(['uid', 'name', 'invite', 'at'])
+            && o.keys().hasAll(['uid', 'name', 'invite', 'at'])
+            && o.uid == uid
+            && o.name is string && o.name.size() <= 60
+            && o.invite is string && o.invite.matches('^[A-Za-z0-9]{20}$')
+            && o.at == request.time
+            && exists(invite)
+            && request.time < get(invite).data.createdAt + duration.value(7, 'd')
+            && !existsAfter(invite);
+        }
+
+        allow create: if isSelf()
+          && hasConfirmedAccount()
+          && exists(eventPath(eventId))
+          && get(eventPath(eventId)).data.ownerUid != uid
+          && validJoin(request.resource.data);
+
+        allow get: if isSelf() || runsEvent(eventId);
+        allow list: if runsEvent(eventId) && request.query.limit <= 50;
+        allow delete: if isSelf() || runsEvent(eventId);
+      }
+    }
+
+    // "Your events" finds the events you run with others by looking up your own entries.
+    match /{path=**}/owners/{uid} {
+      allow list: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && request.query.limit <= 100;
     }
 
     match /tombstones/{eventId} {
       // "update" as well as "create", so that deleting an event works even if its tombstone
       // was somehow written earlier. Either way it needs the event to exist and to be yours,
       // so once the event is gone its tombstone can never be touched again.
-      allow create, update: if ownsEvent(eventId)
+      allow create, update: if runsEvent(eventId)
         && request.resource.data.keys().hasOnly(['at'])
         && request.resource.data.keys().hasAll(['at'])
         && request.resource.data.at == request.time;

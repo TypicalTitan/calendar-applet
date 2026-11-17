@@ -1,7 +1,8 @@
 // Start-up, the page frame (header, footer) and the router.
 //
 // Pages are addressed after the "#": #/ (home), #/sign-in, #/sign-up, #/reset, #/events, #/new,
-// #/account, #/e/<event id> (the invite page) and #/e/<event id>/results (the organizer's view).
+// #/account, #/e/<event id> (the invite page), #/e/<event id>/results (the answers, for whoever runs
+// the event) and #/e/<event id>/join/<invite id> (a link to run an event with someone).
 // Hash addresses need no server set-up, so they work on GitHub Pages as they are.
 
 import { config } from './config.js';
@@ -13,6 +14,7 @@ import { eventsView } from './views/events.js';
 import { newEventView } from './views/event-form.js';
 import { respondView } from './views/respond.js';
 import { resultsView } from './views/results.js';
+import { joinView } from './views/join.js';
 import { accountView } from './views/account.js';
 import { setupView, notFoundView, messageView } from './views/misc.js';
 
@@ -29,6 +31,7 @@ const routes = [
   { pattern: /^\/account$/, view: accountView, needsAccount: true },
   // Not "needsAccount": the page itself tells a signed-out visitor where the invite page is.
   { pattern: /^\/e\/([^/]+)\/results$/, view: resultsView, forAccounts: true },
+  { pattern: /^\/e\/([^/]+)\/join\/([^/]+)$/, view: joinView, forAccounts: true },
   { pattern: /^\/e\/([^/]+)$/, view: respondView },
 ];
 
@@ -49,6 +52,12 @@ export function navigate(path, { replaceEntry = false } = {}) {
 function signInThenReturn() {
   afterSignIn = currentPath();
   navigate('/sign-in');
+}
+
+/** The same for someone who has no account yet. */
+function signUpThenReturn() {
+  afterSignIn = currentPath();
+  navigate('/sign-up');
 }
 
 function currentPath() {
@@ -83,7 +92,7 @@ async function handleSignOut() {
 
 function show(view, route, params) {
   if (current?.dispose) current.dispose();
-  const page = view({ params, navigate, appName, config, signInThenReturn });
+  const page = view({ params, navigate, appName, config, signInThenReturn, signUpThenReturn });
   current = { route, dispose: page.dispose };
   main.className = `main${page.narrow ? ' main-narrow' : ''}`;
   replace(main, page.el);
@@ -139,7 +148,7 @@ function frame() {
 }
 
 async function start() {
-  // A page inside someone else's frame could be used to trick a signed-in organizer into
+  // A page inside someone else's frame could be used to trick someone signed in into
   // clicking things. GitHub Pages cannot send the header that forbids framing, so refuse here.
   if (window.top !== window.self) {
     replace(root, h('p', { class: 'noscript' }, 'This page can’t be shown inside another site. ',
